@@ -346,7 +346,8 @@ struct SessionList: View {
             if s.pending != nil { c += 100 } else if s.status.needsAttention { c += 44 } else if s.needsReview { c += 84 }
             h += c + 8
         }
-        return h + 24 * 3 + 300  // 300 ≈ the usage card (title, three limit rows, refresh, settings link)
+        // 300 ≈ the usage card (title, three limit rows, refresh, settings link); 30 per project header.
+        return h + 24 * 3 + 300 + 30 * CGFloat(Set(sessions.map(\.projectRoot)).count)
     }
 
     var body: some View {
@@ -356,12 +357,61 @@ struct SessionList: View {
         let working = a.filter { $0.status == .working || $0.status == .compacting }
         let idle = a.filter { $0.status == .done && !$0.unseen }
         VStack(alignment: .leading, spacing: 12) {
-            section("Needs you", amber, needs)
-            section("Ready to review", .green, review)
-            section("Working", coral, working)
-            section("Idle", .gray, idle, compact: true)
+            if model.prefs.groupByProject {
+                ForEach(model.groups) { projectSection($0) }
+            } else {
+                section("Needs you", amber, needs)
+                section("Ready to review", .green, review)
+                section("Working", coral, working)
+                section("Idle", .gray, idle, compact: true)
+            }
             if model.prefs.showUsageCard { UsageCard(model: model) }
         }
+    }
+
+    /// One project: a collapsible header (name, state dot, counts) over its sessions, children indented.
+    @ViewBuilder
+    private func projectSection(_ g: ProjectGroup) -> some View {
+        let collapsed = model.collapsedGroups.contains(g.id)
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { model.toggleGroup(g.id) }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
+                        .rotationEffect(.degrees(collapsed ? 0 : 90)).foregroundStyle(.tertiary).frame(width: 8)
+                    Text(g.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
+                    Text("\(g.sessionCount)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                    if g.openPRs > 0 {
+                        Label("\(g.openPRs)", systemImage: "arrow.triangle.pull")
+                            .font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                            .labelStyle(.titleAndIcon)
+                    }
+                    Spacer(minLength: 4)
+                    // Collapsed headers still say what is going on inside.
+                    if collapsed {
+                        if g.needsAttention > 0 {
+                            Text("\(g.needsAttention) need you").font(.system(size: 10, weight: .medium)).foregroundStyle(amber)
+                        } else if g.running > 0 {
+                            Text("\(g.running) working").font(.system(size: 10)).foregroundStyle(coral)
+                        }
+                    }
+                    Circle().fill(groupTint(g)).frame(width: 6, height: 6)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(.horizontal, 4)
+            if !collapsed {
+                ForEach(g.rows) { r in
+                    SessionCard(model: model, session: r.session, compact: r.session.status == .done && !r.session.unseen)
+                        .id(r.id).padding(.leading, r.isChild ? 14 : 0)
+                }
+            }
+        }
+    }
+
+    private func groupTint(_ g: ProjectGroup) -> Color {
+        g.needsAttention > 0 ? amber : g.running > 0 ? coral : g.lead == .done ? .green : .gray
     }
 
     @ViewBuilder
@@ -988,7 +1038,7 @@ struct CompactView: View {
     let headerH: CGFloat
 
     var body: some View {
-        let sessions = model.store.active
+        let sessions = model.displayOrder
         let shown = Array(sessions.prefix(CompactLayout.maxRows))
         VStack(spacing: 0) {
             NotchHeaderRow(geometry: geometry, islandWidth: min(model.panelWidth, CGFloat(CompactLayout.width)), height: headerH) {

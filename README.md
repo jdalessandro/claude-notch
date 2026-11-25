@@ -20,6 +20,7 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
   with a count badge) and a live waveform that moves while an agent works.
 - **Two expanded views, and it remembers your choice.** Hover (or click) to open the **Detailed** view, grouped into **Needs you**, **Ready to review**, **Working** and **Idle**, or the **Compact** view: one line per session with Allow/Deny inline and a mini plan-limit readout. Flip between them from the island header; the last one you used is restored every time, even after a relaunch. Clicking a session in the compact view jumps to it in the detailed view (until the island closes, so your saved choice is untouched).
 - **Narrow by design.** The island is 320 pt (compact) to 350 pt (detailed) wide by default, in the proportions of the system media island; widths are adjustable in Settings.
+- **Grouped by project, like the desktop sidebar.** Sessions sit under collapsible project headers (worktrees join their repository) with a state dot, a session count and open-PR count; a collapsed header still says "2 need you". Sessions started from another session are indented under it. Project folders come from hooks; PR counts and parent links are read, read-only and best effort, from the desktop app's local session metadata, and simply absent if that format changes. Cloud sessions run remotely and never reach the island. Turn off in *Settings ▸ General* to group by state instead.
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
@@ -111,7 +112,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 
 | Tab | Options |
 |---|---|
-| **General** | Island style (floating / attached), width, collapsed view (tile + waveform / waveform only), hide when idle · expanded view (compact / detailed), expand on hover, hover delay, auto-open on events and how long, forget idle sessions after |
+| **General** | Group by project · island style (floating / attached), width, collapsed view (tile + waveform / waveform only), hide when idle · expanded view (compact / detailed), expand on hover, hover delay, auto-open on events and how long, forget idle sessions after |
 | **Content** | Show prompt, subagents, context meter and changed lines, usage and quota · usage card shows limits (%) or tokens · dollar cost (automatic / always / never) |
 | **Notifications** | Per event (approval, input, finished, failed) · sound · system notifications · include command/reply details in banners |
 | **Integration** | Install / reinstall / uninstall hooks · approve from the island · quota gauges |
@@ -131,7 +132,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 ## Development
 
 ```bash
-make build test      # build and run the 118-test suite
+make build test      # build and run the 127-test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents

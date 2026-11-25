@@ -119,6 +119,7 @@ struct GeneralTab: View {
                     Text("Short").tag(Preferences.HoverDelay.short)
                     Text("Long").tag(Preferences.HoverDelay.long)
                 }.disabled(!settings.prefs.expandOnHover)
+                Toggle("Group sessions by project", isOn: $settings.prefs.groupByProject)
                 Toggle("Mark results as reviewed automatically", isOn: $settings.prefs.autoMarkReviewed)
                 Toggle("Open automatically when something happens", isOn: $settings.prefs.autoExpandOnEvents)
                 Stepper(

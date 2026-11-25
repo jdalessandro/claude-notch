@@ -87,6 +87,26 @@ final class AppModel {
         if expandedSubagents.contains(id) { expandedSubagents.remove(id) } else { expandedSubagents.insert(id) }
     }
 
+    /// Desktop-app metadata (project folder, PRs, parent sessions), refreshed in the background. Best effort.
+    var desktopIndex = DesktopSessionIndex()
+    var collapsedGroups: Set<String> = []
+    func toggleGroup(_ id: String) {
+        if collapsedGroups.contains(id) { collapsedGroups.remove(id) } else { collapsedGroups.insert(id) }
+    }
+    var groups: [ProjectGroup] { ProjectGrouping.group(store.active, desktop: desktopIndex) }
+    /// Active sessions in the order the island shows them: by project when grouping is on, else by urgency.
+    var displayOrder: [AgentSession] {
+        prefs.groupByProject ? groups.flatMap { $0.rows.map(\.session) } : store.active
+    }
+    private func refreshDesktopIndex() {
+        Task.detached {
+            let idx = DesktopSessionIndex.load()
+            await MainActor.run { [weak self] in
+                if self?.desktopIndex != idx { self?.desktopIndex = idx }
+            }
+        }
+    }
+
     private var reviewGate = ReviewGate()
 
     /// Called often (from the pointer poll). A finished result counts as reviewed when the user deliberately views the
@@ -144,6 +164,7 @@ final class AppModel {
             Task { @MainActor in await self?.tick() }
         }
         Notifier.requestAuthorization()
+        refreshDesktopIndex()
         Task { await refreshUsage() }
     }
 
@@ -264,6 +285,7 @@ final class AppModel {
     func tick() async {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
+        if tickCount % 5 == 0 { refreshDesktopIndex() }  // every ~10 s
         let before = Set(store.sessions.keys)
         // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
         let effects = store.prune(idleTTL: prefs.sessionRetention.seconds)
@@ -403,11 +425,20 @@ final class AppModel {
 
     // MARK: demo
 
+    /// Demo sessions: two of them are worktrees of another demo project, so the grouping shows.
+    private func demoCwd(_ sid: String) -> String {
+        switch sid {
+        case "api-gateway": "/Users/you/code/payments-api/.claude/worktrees/api-gateway"
+        case "docs-site": "/Users/you/code/web-dashboard/.claude/worktrees/docs-site"
+        default: "/Users/you/code/\(sid)"
+        }
+    }
+
     private func runDemo() {
         func e(
             _ n: String, _ sid: String, reply: Bool = false, ago: TimeInterval = 0, _ cfg: (inout HookPayload) -> Void = { _ in }
         ) -> HookEnvelope {
-            var p = HookPayload(sessionId: sid, cwd: "/Users/you/code/\(sid)", hookEventName: n); cfg(&p)
+            var p = HookPayload(sessionId: sid, cwd: demoCwd(sid), hookEventName: n); cfg(&p)
             return HookEnvelope(payload: p, receivedAt: Date().addingTimeInterval(-ago), termProgram: "iTerm.app", expectsReply: reply)
         }
         // payments-api: working, with two subagents (one running, one finished)

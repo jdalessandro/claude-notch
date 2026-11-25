@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Dynamic-Island-style overlay for the MacBook display cutout (floating or attached), with a collapsed
   tile + waveform and an expanded view that groups sessions by what needs you.
 - Per-session prompt, current tool, subagent tree, context meter, and the result of finished turns.
+- Sessions grouped under collapsible project headers (worktrees join their repository), with open-PR counts and
+  parent/child indentation read best-effort from the desktop app's session metadata. Optional: *Group by project*.
 - Compact and detailed expanded views, switchable from the island header; the last-used view is remembered.
 - Approve or deny tool permissions from the island.
 - Plan-limit usage in the style of Claude Desktop (5-hour, weekly, per-model weekly) as percentage bars, with a

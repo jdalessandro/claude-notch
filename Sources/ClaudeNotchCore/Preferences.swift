@@ -79,6 +79,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var bannerDetails = true
     /// Mark a finished result reviewed when the user replies in that session or views the full result in the island.
     public var autoMarkReviewed = true
+    /// Group sessions under their project folder instead of only by state.
+    public var groupByProject = true
     // Advanced
     public var logRawEvents = false
 
@@ -119,7 +121,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         load(\.notifyOnPermission, "notifyOnPermission"); load(\.notifyOnInput, "notifyOnInput")
         load(\.notifyOnFinished, "notifyOnFinished"); load(\.notifyOnFailed, "notifyOnFailed")
         load(\.approveFromIsland, "approveFromIsland"); load(\.costDisplay, "costDisplay"); load(\.usageDisplay, "usageDisplay");
-        load(\.autoMarkReviewed, "autoMarkReviewed");
+        load(\.autoMarkReviewed, "autoMarkReviewed"); load(\.groupByProject, "groupByProject");
         load(\.bannerDetails, "bannerDetails")
         load(\.logRawEvents, "logRawEvents")
         autoExpandSeconds = min(30, max(2, autoExpandSeconds))
