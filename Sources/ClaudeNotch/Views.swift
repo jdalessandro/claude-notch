@@ -744,10 +744,17 @@ struct SubagentRow: View {
                         Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 4)
+                    // How long it has been working (live), or how long it took.
                     if sub.status == .running {
-                        TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(sub.startedAt))) }
+                        HStack(spacing: 3) {
+                            Image(systemName: "timer").font(.system(size: 8.5))
+                            TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(sub.startedAt))) }
+                        }.foregroundStyle(coral.opacity(0.95))
                     } else if let e = sub.endedAt {
-                        Text(Fmt.duration(e.timeIntervalSince(sub.startedAt)))
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark").font(.system(size: 8, weight: .bold))
+                            Text(Fmt.duration(e.timeIntervalSince(sub.startedAt)))
+                        }.foregroundStyle(Color.green.opacity(0.85))
                     }
                 }
                 .font(.system(size: 10.5)).monospacedDigit()

@@ -375,9 +375,11 @@ final class AppModel {
     // MARK: demo
 
     private func runDemo() {
-        func e(_ n: String, _ sid: String, reply: Bool = false, _ cfg: (inout HookPayload) -> Void = { _ in }) -> HookEnvelope {
+        func e(
+            _ n: String, _ sid: String, reply: Bool = false, ago: TimeInterval = 0, _ cfg: (inout HookPayload) -> Void = { _ in }
+        ) -> HookEnvelope {
             var p = HookPayload(sessionId: sid, cwd: "/Users/you/code/\(sid)", hookEventName: n); cfg(&p)
-            return HookEnvelope(payload: p, termProgram: "iTerm.app", expectsReply: reply)
+            return HookEnvelope(payload: p, receivedAt: Date().addingTimeInterval(-ago), termProgram: "iTerm.app", expectsReply: reply)
         }
         // payments-api: working, with two subagents (one running, one finished)
         _ = store.apply(
@@ -393,11 +395,11 @@ final class AppModel {
                 $0.toolName = "Task"; $0.toolInput = .object(["description": .string("Draft unit tests")])
             })
         _ = store.apply(
-            e("SubagentStart", "payments-api") {
+            e("SubagentStart", "payments-api", ago: 134) {
                 $0.agentId = "a1"; $0.agentType = "Explore"
             })
         _ = store.apply(
-            e("SubagentStart", "payments-api") {
+            e("SubagentStart", "payments-api", ago: 190) {
                 $0.agentId = "a2"; $0.agentType = "general-purpose"
             })
         _ = store.apply(
@@ -405,7 +407,7 @@ final class AppModel {
                 $0.agentId = "a1"; $0.agentType = "Explore"; $0.toolName = "Grep"; $0.toolInput = .object(["pattern": .string("retry\\(")])
             })
         _ = store.apply(
-            e("SubagentStop", "payments-api") {
+            e("SubagentStop", "payments-api", ago: 50) {
                 $0.agentId = "a2"; $0.lastAssistantMessage = "Added 6 tests in RetryTests.swift"
             })
         _ = store.apply(
@@ -415,7 +417,7 @@ final class AppModel {
         // web-dashboard: a subagent is asking permission
         _ = store.apply(e("UserPromptSubmit", "web-dashboard") { $0.prompt = "Fix the flaky chart tooltip" })
         _ = store.apply(
-            e("SubagentStart", "web-dashboard") {
+            e("SubagentStart", "web-dashboard", ago: 41) {
                 $0.agentId = "w1"; $0.agentType = "general-purpose"
             })
         _ = store.apply(
@@ -446,11 +448,11 @@ final class AppModel {
                 $0.toolName = "Task"; $0.toolInput = .object(["description": .string("Draft the runner config")])
             })
         _ = store.apply(
-            e("SubagentStart", "infra-tools") {
+            e("SubagentStart", "infra-tools", ago: 312) {
                 $0.agentId = "i1"; $0.agentType = "Explore"
             })
         _ = store.apply(
-            e("SubagentStart", "infra-tools") {
+            e("SubagentStart", "infra-tools", ago: 95) {
                 $0.agentId = "i2"; $0.agentType = "general-purpose"
             })
         _ = store.apply(
