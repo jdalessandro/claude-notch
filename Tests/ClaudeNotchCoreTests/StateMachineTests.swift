@@ -157,4 +157,24 @@ import Testing
         #expect(SessionStore.summarize(tool: "Edit", input: .object(["file_path": .string("/a/b/File.swift")])) == "Edit: File.swift")
         #expect(SessionStore.summarize(tool: "mcp__x__y", input: nil) == "mcp__x__y")
     }
+
+    @Test func syntheticPromptsDoNotReplaceTheUsersPrompt() {
+        var s = SessionStore()
+        s.apply(ev("UserPromptSubmit") { $0.prompt = "Refactor the retry logic" })
+        s.apply(ev("UserPromptSubmit", t: 5) { $0.prompt = #"<agent-message from="a1">[Subagent hand-back] done"# })
+        #expect(s.sessions["s1"]?.lastPrompt == "Refactor the retry logic")
+        #expect(s.sessions["s1"]?.status == .working)  // it still starts a turn
+    }
+
+    @Test func projectNamesAreReadableForWorktreesAndScratchWorkspaces() {
+        func name(_ cwd: String) -> String { AgentSession(id: "x", cwd: cwd, startedAt: Date(), lastEventAt: Date()).projectName }
+        #expect(name("/Users/me/Code/agent-sandbox/.claude/worktrees/agent-ac047e12") == "agent-sandbox")
+        #expect(
+            name("/Users/me/Library/Application Support/Claude/scratch-workspaces/aaa/bbb/scratch-2026-11-25-f5b7b6") == "Scratch workspace"
+        )
+        #expect(name("/Users/me/Code/interview-prep-lab") == "interview-prep-lab")
+        var a = AgentSession(id: "x", cwd: "/p", startedAt: Date(), lastEventAt: Date())
+        a.gitBranch = "HEAD"; #expect(a.displayBranch == nil)
+        a.gitBranch = "main"; #expect(a.displayBranch == "main")
+    }
 }

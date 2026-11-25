@@ -32,4 +32,23 @@ import Testing
     @Test func statusLabels() {
         #expect(Fmt.label(.needsPermission) == "Needs permission" && Fmt.label(.done) == "Done")
     }
+
+    @Test func markdownIsFlattenedButInlineMarksSurvive() {
+        let md = "## Done\n\nAdded **three** tests:\n- `RetryTests.swift`\n- see [docs](https://x.y)\n```swift\nlet x = 1\n```\n1. ship it"
+        let inline = Fmt.inlineMarkdown(md)
+        #expect(inline == "Done Added **three** tests: `RetryTests.swift` see [docs](https://x.y) ship it")
+        #expect(!inline.contains("let x"))  // fenced code dropped
+        #expect(Fmt.plainText(md) == "Done Added three tests: RetryTests.swift see docs ship it")
+        #expect(Fmt.inlineMarkdown("") == "" && Fmt.plainText("   \n\n") == "")
+    }
+
+    @Test func syntheticPromptsAreRecognised() {
+        for s in [
+            #"<agent-message from="a1"> [Subagent hand-back] ..."#, "<task-notification>x</task-notification>",
+            "<system-reminder>be careful</system-reminder>", "  <command-name>/clear</command-name>", "[Request interrupted by user]",
+        ] { #expect(Fmt.isSyntheticPrompt(s), "\(s)") }
+        for s in ["Fix the flaky test", "use <div> for the layout", "What does <T> mean in Swift?", "1 < 2 is true"] {
+            #expect(!Fmt.isSyntheticPrompt(s), "\(s)")  // real prompts that merely mention angle brackets
+        }
+    }
 }
