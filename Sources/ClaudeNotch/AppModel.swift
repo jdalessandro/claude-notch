@@ -34,6 +34,12 @@ final class AppModel {
     var autoExpandUntil = Date.distantPast
     private(set) var expanded = false
     var hooksInstalled = HookInstaller.isInstalled()
+    /// Hooks were installed by an older version and miss events this version relies on (for example SubagentStart).
+    var hooksOutdated = false
+    func refreshHookStatus() {
+        hooksInstalled = HookInstaller.isInstalled()
+        hooksOutdated = !HookInstaller.missingEvents(interactivePermissions: prefs.approveFromIsland).isEmpty
+    }
     let settings: AppSettings
     var prefs: Preferences { settings.prefs }
     var panelWidth: CGFloat { CGFloat(prefs.panelWidth.points) }
@@ -106,6 +112,7 @@ final class AppModel {
         }
         if demo { runDemo(); return }
         refreshInstalledForwarder()
+        refreshHookStatus()
         let srv = NotchServer { [weak self] env, reply in
             Task { @MainActor in self?.ingest(env, reply: reply) }
         }
@@ -330,7 +337,10 @@ final class AppModel {
     func installHooks() {
         do {
             _ = try HookInstaller.install(hookPath: try stableHookPath(), interactivePermissions: prefs.approveFromIsland)
-            hooksInstalled = true; lastError = nil
+            hooksInstalled = true
+            refreshHookStatus()
+            lastError = nil
+            refreshHookStatus()
         } catch { lastError = error.localizedDescription }
     }
 
@@ -351,7 +361,10 @@ final class AppModel {
     }
 
     func uninstallHooks() {
-        do { _ = try HookInstaller.uninstall(); hooksInstalled = false; lastError = nil } catch { lastError = error.localizedDescription }
+        do {
+            _ = try HookInstaller.uninstall(); hooksInstalled = false
+            hooksOutdated = false; lastError = nil
+        } catch { lastError = error.localizedDescription }
     }
 
     // MARK: debug log (helps verify real payload shapes across Claude Code versions)

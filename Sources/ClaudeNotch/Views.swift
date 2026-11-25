@@ -412,6 +412,22 @@ func quotaColor(_ fraction: Double) -> Color {
     fraction >= 0.90 ? Color(red: 0.86, green: 0.27, blue: 0.27) : fraction >= 0.75 ? Color(red: 0.96, green: 0.72, blue: 0.26) : quotaBlue
 }
 
+/// A small round icon button (refresh, settings, ...), quieter than a text row.
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .background(Color.white.opacity(0.08), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain).help(help)
+    }
+}
+
 struct UsageCard: View {
     @Bindable var model: AppModel
 
@@ -420,29 +436,26 @@ struct UsageCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("PLAN USAGE LIMITS" + (model.planName.map { " · \($0.uppercased())" } ?? ""))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
-                Spacer()
-                UsageModeToggle(model: model)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                IconButton(symbol: "arrow.clockwise", help: "Refresh usage") { model.refreshUsageNow() }
+                IconButton(symbol: "gearshape", help: "Usage settings") { model.openUsageSettings() }
             }
 
             if showingPercent { limits } else { tokens }
 
-            Divider().overlay(Color.white.opacity(0.08))
-
             HStack {
-                Button("Refresh") { model.refreshUsageNow() }.buttonStyle(.plain).font(.system(size: 13))
-                Spacer()
+                UsageModeToggle(model: model)
+                Spacer(minLength: 6)
                 if let u = updated {
                     TimelineView(.periodic(from: .now, by: 15)) { c in
-                        Text("Updated \(Fmt.ago(u, now: c.date))").font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 9).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.10), in: Capsule())
+                        Text("Updated \(Fmt.ago(u, now: c.date))").font(.system(size: 10.5)).foregroundStyle(.secondary)
                     }
                 }
             }
-            Button("Usage settings…") { model.openUsageSettings() }.buttonStyle(.plain).font(.system(size: 13))
         }
         .padding(Metrics.inset + 4)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -864,7 +877,10 @@ struct FooterView: View {
     @Bindable var model: AppModel
     var body: some View {
         HStack(spacing: 10) {
-            if model.hooksInstalled {
+            if model.hooksInstalled && model.hooksOutdated {
+                // Installed by an older version: missing events (e.g. SubagentStart) mean subagents are noticed late.
+                ChipButton(title: "Update hooks", tint: amber, filled: true) { model.installHooks() }
+            } else if model.hooksInstalled {
                 Label("Hooks active", systemImage: "checkmark.seal.fill").font(.system(size: 10.5)).foregroundStyle(.green.opacity(0.9))
             } else {
                 ChipButton(title: "Install hooks", tint: coral, filled: true) { model.installHooks() }

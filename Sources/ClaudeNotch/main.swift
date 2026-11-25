@@ -82,12 +82,12 @@ func renderSnapshots(to dir: String) {
     model.settings.prefs.expandedMode = .compact
     shot("expanded-compact", height: 520)
     model.settings.prefs.expandedMode = .detailed
-    shot("expanded-needs-you", height: 1200)
+    shot("expanded-needs-you", height: 1500)
     // Resolve the request and let the subagent finish so the "review / working / idle" mix is visible.
     model.store.resolvePermission("web-dashboard", allowed: true)
     model.expandedSubagents.insert("infra-tools")  // show the explorable subagent tree
     model.store.markSeen("web-dashboard")
-    shot("expanded-mixed", height: 1200)
+    shot("expanded-mixed", height: 1500)
     model.pinned = false
     model.store.markSeen("docs-site")
     shot("collapsed", height: 120)

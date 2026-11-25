@@ -121,6 +121,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 | Symptom | Try |
 |---|---|
 | Nothing appears | Is the app running (menu-bar sparkle)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
+| Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
 | Island flickers or won't open | Increase *Hover delay*, or turn off *Expand on hover* and click to open. |
 | No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Claude Notch leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
