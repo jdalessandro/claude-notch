@@ -266,45 +266,21 @@ struct ExpandedView: View {
         let totalCost = sessions.reduce(0) { $0 + $1.costUSD }
         let running = sessions.reduce(0) { $0 + $1.runningSubagents }
         VStack(spacing: 0) {
-            // Header band sits beside the hardware pill.
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkle").foregroundStyle(coral)
-                    Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
-                    if model.runningSubagentTotal > 0 {
-                        Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-
+            // The header shares its row with the hardware cutout: each side gets a computed safe width and picks the
+            // longest wording that fits, so nothing ever runs underneath the cutout.
+            NotchHeaderRow(geometry: geometry, islandWidth: model.panelWidth, height: headerH) {
+                AgentCountTitle(model: model, count: sessions.count)
+            } right: {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        Text(model.showCost ? "\(Fmt.tokens(totalTokens)) tok · \(Fmt.cost(totalCost))" : "\(Fmt.tokens(totalTokens)) tok")
+                            .monospacedDigit()
+                        HeaderActions(model: model, compact: false)
+                    }.fixedSize()
+                    HeaderActions(model: model, compact: false).fixedSize()
                 }
-                .padding(.leading, 20)
-                Spacer(minLength: geometry.notchWidth)
-                HStack(spacing: 10) {
-                    Text(model.showCost ? "\(Fmt.tokens(totalTokens)) tok · \(Fmt.cost(totalCost))" : "\(Fmt.tokens(totalTokens)) tok")
-                        .monospacedDigit()
-                    if sessions.contains(where: { $0.needsReview }) {
-                        Button {
-                            model.dismissAllReviewed()
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                        }
-                        .buttonStyle(.plain).help("Mark all reviewed")
-                    }
-                    Button {
-                        model.toggleExpandedMode()
-                    } label: {
-                        Image(systemName: "rectangle.compress.vertical")
-                    }.buttonStyle(.plain).help("Switch to compact view")
-                    Button {
-                        model.pinned.toggle()
-                    } label: {
-                        Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
-                    }.buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
-                }
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .lineLimit(1).fixedSize()
-                .padding(.trailing, 20)
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .frame(height: headerH)
 
             Group {
                 if sessions.isEmpty {
@@ -909,6 +885,83 @@ struct IslandMenu: View {
 
 // MARK: - Compact (abbreviated) view: one line per session
 
+/// One header row with a safe zone for the hardware cutout: left and right groups are each limited to
+/// `SafeZone.sideWidth`, with the cutout (plus margin) left empty between them.
+struct NotchHeaderRow<Left: View, Right: View>: View {
+    let geometry: NotchGeometry
+    let islandWidth: CGFloat
+    let height: CGFloat
+    @ViewBuilder var left: Left
+    @ViewBuilder var right: Right
+
+    var body: some View {
+        let side = CGFloat(SafeZone.sideWidth(islandWidth: Double(islandWidth), cutoutWidth: Double(geometry.notchWidth)))
+        HStack(spacing: 0) {
+            left.frame(width: side, alignment: .leading)
+            Spacer(minLength: 0)
+            right.frame(width: side, alignment: .trailing)
+        }
+        .padding(.horizontal, CGFloat(SafeZone.outerPadding))
+        .frame(height: height)
+    }
+}
+
+/// "3 agents · 2 sub", shrinking to "3 · 2 sub" and then "3" when the side is narrow.
+struct AgentCountTitle: View {
+    let model: AppModel
+    let count: Int
+
+    private func row(_ word: Bool, _ subs: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkle").foregroundStyle(coral)
+            Text(word ? "\(count) agent\(count == 1 ? "" : "s")" : "\(count)").font(.system(size: 12, weight: .semibold))
+            if subs, model.runningSubagentTotal > 0 {
+                Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1).fixedSize()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row(true, true)
+            row(false, true)
+            row(false, false)
+        }
+    }
+}
+
+/// Mark-reviewed, compact/detailed switch and pin: the header's icon buttons.
+struct HeaderActions: View {
+    @Bindable var model: AppModel
+    let compact: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if model.store.active.contains(where: { $0.needsReview }) {
+                Button {
+                    model.dismissAllReviewed()
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                }
+                .buttonStyle(.plain).help("Mark all reviewed")
+            }
+            Button {
+                model.toggleExpandedMode()
+            } label: {
+                Image(systemName: compact ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+            }
+            .buttonStyle(.plain).help(compact ? "Switch to detailed view" : "Switch to compact view")
+            Button {
+                model.pinned.toggle()
+            } label: {
+                Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
+            }
+            .buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
+        }
+    }
+}
+
 struct CompactView: View {
     @Bindable var model: AppModel
     let geometry: NotchGeometry
@@ -918,41 +971,12 @@ struct CompactView: View {
         let sessions = model.store.active
         let shown = Array(sessions.prefix(CompactLayout.maxRows))
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkle").foregroundStyle(coral)
-                    Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
-                    if model.runningSubagentTotal > 0 {
-                        Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.leading, 20)
-                Spacer(minLength: geometry.notchWidth)
-                HStack(spacing: 10) {
-                    if sessions.contains(where: { $0.needsReview }) {
-                        Button {
-                            model.dismissAllReviewed()
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                        }
-                        .buttonStyle(.plain).help("Mark all reviewed")
-                    }
-                    Button {
-                        model.toggleExpandedMode()
-                    } label: {
-                        Image(systemName: "rectangle.expand.vertical")
-                    }.buttonStyle(.plain).help("Switch to detailed view")
-                    Button {
-                        model.pinned.toggle()
-                    } label: {
-                        Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
-                    }.buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
-                }
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .lineLimit(1).fixedSize()
-                .padding(.trailing, 20)
+            NotchHeaderRow(geometry: geometry, islandWidth: min(model.panelWidth, CGFloat(CompactLayout.width)), height: headerH) {
+                AgentCountTitle(model: model, count: sessions.count)
+            } right: {
+                HeaderActions(model: model, compact: true).fixedSize()
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .frame(height: headerH)
 
             Group {
                 if sessions.isEmpty {

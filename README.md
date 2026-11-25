@@ -130,7 +130,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 ## Development
 
 ```bash
-make build test      # build and run the 104-test suite
+make build test      # build and run the 112-test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents
