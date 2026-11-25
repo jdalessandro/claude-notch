@@ -856,11 +856,10 @@ struct FooterView: View {
             if model.hooksInstalled && model.hooksOutdated {
                 // Installed by an older version: missing events (e.g. SubagentStart) mean subagents are noticed late.
                 ChipButton(title: "Update hooks", tint: amber, filled: true) { model.installHooks() }
-            } else if model.hooksInstalled {
-                Label("Hooks active", systemImage: "checkmark.seal.fill").font(.system(size: 10.5)).foregroundStyle(.green.opacity(0.9))
-            } else {
+            } else if !model.hooksInstalled {
                 ChipButton(title: "Install hooks", tint: coral, filled: true) { model.installHooks() }
             }
+            // When hooks are installed and current there is nothing to say: no "all good" status line.
             if let e = model.lastError { Text(e).font(.system(size: 10)).foregroundStyle(.red).lineLimit(1) }
             Spacer()
             IslandMenu(model: model)
@@ -906,17 +905,27 @@ struct NotchHeaderRow<Left: View, Right: View>: View {
     }
 }
 
-/// "3 agents · 2 sub", shrinking to "3 · 2 sub" and then "3" when the side is narrow.
+/// The agent count, kept as informative as the room allows. With subagents running it is two lines:
+///     ✦ 3 agents
+///       2 subagents running
+/// and it degrades in order: drop the sparkle, then fold into one line ("3 agents · 2 sub"), then shorten the words.
 struct AgentCountTitle: View {
     let model: AppModel
     let count: Int
 
-    private func row(_ word: Bool, _ subs: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "sparkle").foregroundStyle(coral)
-            Text(word ? "\(count) agent\(count == 1 ? "" : "s")" : "\(count)").font(.system(size: 12, weight: .semibold))
-            if subs, model.runningSubagentTotal > 0 {
-                Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
+    private func row(icon: Bool, twoLine: Bool, word: Bool, subs: Bool) -> some View {
+        let n = model.runningSubagentTotal
+        let head = word ? "\(count) agent\(count == 1 ? "" : "s")" : "\(count)"
+        return HStack(spacing: 6) {
+            if icon { Image(systemName: "sparkle").foregroundStyle(coral) }
+            if twoLine && subs && n > 0 {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(head).font(.system(size: 12, weight: .semibold))
+                    Text("\(n) subagent\(n == 1 ? "" : "s") running").font(.system(size: 9.5)).foregroundStyle(.secondary)
+                }
+            } else {
+                Text(head).font(.system(size: 12, weight: .semibold))
+                if subs && n > 0 { Text("· \(n) sub").font(.system(size: 11)).foregroundStyle(.secondary) }
             }
         }
         .lineLimit(1).fixedSize()
@@ -924,9 +933,12 @@ struct AgentCountTitle: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            row(true, true)
-            row(false, true)
-            row(false, false)
+            row(icon: true, twoLine: true, word: true, subs: true)
+            row(icon: false, twoLine: true, word: true, subs: true)
+            row(icon: true, twoLine: false, word: true, subs: true)
+            row(icon: false, twoLine: false, word: true, subs: true)
+            row(icon: false, twoLine: false, word: false, subs: true)
+            row(icon: false, twoLine: false, word: false, subs: false)
         }
     }
 }

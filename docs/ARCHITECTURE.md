@@ -66,8 +66,11 @@ measured and quantized, and while collapsed the transparent window margins are c
 
 The header row shares its band with the opaque hardware cutout. `SafeZone.sideWidth` (core, tested) gives each side of the
 header the width left beside the cutout after a margin and the island's outer padding. `NotchHeaderRow` limits the left
-and right groups to that width, and each group lists its wordings longest-first inside a `ViewThatFits` ("3 agents · 2 sub"
--> "3 · 2 sub" -> "3"; tokens + icons -> icons), so text degrades instead of running underneath the cutout. To check a
+and right groups to that width, and each group lists its wordings longest-first inside a `ViewThatFits`. The title is two lines when subagents run
+("3 agents" over "2 subagents running"), and degrades by dropping the decorative sparkle first, then folding to one
+line ("3 agents · 2 sub"), then shortening the words; tokens + icons degrade to icons. Text degrades instead of running
+underneath the cutout. The cutout width the app measures already includes a margin, so `SafeZone.cutoutMargin` is only a
+small extra clearance (a large one would waste room and force terse wording). To check a
 layout, run `CLAUDE_NOTCH_SNAPSHOT_DEBUG=1 .build/debug/ClaudeNotch --snapshot <dir>`: it renders the headers with the
 cutout drawn in red, at the real width and at a much wider one.
 
