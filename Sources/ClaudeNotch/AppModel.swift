@@ -198,6 +198,12 @@ final class AppModel {
 
     /// Delivers Allow/Deny to the held hook. If the hook already went away (timeout, answered in the terminal)
     /// there is nothing to answer, so the request is simply detached instead of being reported as resolved.
+    /// "Answer in Claude": lets the question through (so Claude shows its own question UI), then jumps there.
+    func answerQuestion(_ session: AgentSession) {
+        answer(session.id, .allow)
+        open(session)
+    }
+
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
         let reason = decision == .deny ? "Denied from Claude Notch" : nil
         if broker.answer(sessionId, decision, reason: reason) {
@@ -402,6 +408,18 @@ final class AppModel {
                 $0.agentId = "w1"; $0.agentType = "general-purpose"; $0.toolName = "Bash";
                 $0.toolInput = .object(["command": .string("npm install --save-dev vitest")])
             })
+        // api-gateway: Claude is asking the user a question
+        _ = store.apply(e("UserPromptSubmit", "api-gateway") { $0.prompt = "Add an audit log for admin actions" })
+        _ = store.apply(
+            e("PermissionRequest", "api-gateway", reply: true) {
+                $0.toolName = "AskUserQuestion"
+                let opts = ["Postgres", "SQLite", "DynamoDB"].map { JSONValue.object(["label": .string($0)]) }
+                let q = JSONValue.object([
+                    "question": .string("Which database should store the audit log?"), "header": .string("Database"),
+                    "multiSelect": .bool(false), "options": .array(opts),
+                ])
+                $0.toolInput = .object(["questions": .array([q])])
+            })
         // docs-site: finished, waiting for review
         _ = store.apply(e("UserPromptSubmit", "docs-site") { $0.prompt = "Write a migration guide for v2 and link it from the sidebar" })
         _ = store.apply(
@@ -414,7 +432,7 @@ final class AppModel {
         store.markSeen("notes-cli")
         for (id, ctx, cost, tok) in [
             ("payments-api", 0.42, 1.87, 412_000), ("web-dashboard", 0.71, 3.20, 880_000), ("docs-site", 0.18, 0.34, 96_000),
-            ("notes-cli", 0.1, 0.12, 21_000),
+            ("notes-cli", 0.1, 0.12, 21_000), ("api-gateway", 0.33, 0.9, 150_000),
         ] {
             store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok)
         }
