@@ -257,4 +257,34 @@ import Testing
             })
         #expect(w.sessions["s1"]?.status == .needsPermission)
     }
+
+    @Test func eachSessionSummarisesItsOwnSubagents() {
+        var s = SessionStore()
+        #expect(s.apply(ev("UserPromptSubmit", sid: "a") { $0.prompt = "x" }) == .none)
+        #expect(s.sessions["a"]?.subagentSummary == nil && s.sessions["a"]?.subagentBadgeCount == 0)
+        s.apply(
+            ev("SubagentStart", sid: "a", t: 1) {
+                $0.agentId = "1"; $0.agentType = "Explore"
+            })
+        s.apply(
+            ev("SubagentStart", sid: "a", t: 1) {
+                $0.agentId = "2"; $0.agentType = "Plan"
+            })
+        s.apply(
+            ev("SubagentStart", sid: "a", t: 1) {
+                $0.agentId = "3"; $0.agentType = "Explore"
+            })
+        #expect(s.sessions["a"]?.subagentSummary == "3 running" && s.sessions["a"]?.subagentBadgeCount == 3)
+        s.apply(ev("SubagentStop", sid: "a", t: 5) { $0.agentId = "1" })
+        #expect(s.sessions["a"]?.subagentSummary == "2 running · 1 done" && s.sessions["a"]?.subagentBadgeCount == 2)
+        s.apply(ev("SubagentStop", sid: "a", t: 6) { $0.agentId = "2" })
+        s.apply(ev("SubagentStop", sid: "a", t: 7) { $0.agentId = "3" })
+        #expect(s.sessions["a"]?.subagentSummary == "3 done" && s.sessions["a"]?.subagentBadgeCount == 3)
+        // Another session's subagents are not mixed in.
+        s.apply(
+            ev("SubagentStart", sid: "b") {
+                $0.agentId = "x"; $0.agentType = "Explore"
+            })
+        #expect(s.sessions["a"]?.subagentSummary == "3 done" && s.sessions["b"]?.subagentSummary == "1 running")
+    }
 }

@@ -23,7 +23,7 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
-- **A subagent tree you can explore.** The header counts running subagents ("6 agents · 4 sub"). Each session lists its subagents running-first with a ├/└ tree; tap the **Subagents** header to open all of them with what each is doing right now, its tool-call count and its last result. A session whose main turn has ended but whose subagents still run stays **Working** ("Waiting on 2 subagents") and is only marked finished, with its notification, when the last one stops. A subagent silent for 15 minutes is treated as finished so nothing can stay stuck.
+- **A subagent tree you can explore.** The header counts the total ("6 agents" over "4 subagents running"), and every session shows its own stat under its token count ("⑂ 2 running · 1 done"; a branch glyph and count in the compact view). Each session lists its subagents running-first with a ├/└ tree; tap the **Subagents** header to open all of them with what each is doing right now, its tool-call count and its last result. A session whose main turn has ended but whose subagents still run stays **Working** ("Waiting on 2 subagents") and is only marked finished, with its notification, when the last one stops. A subagent silent for 15 minutes is treated as finished so nothing can stay stuck.
 - **Questions look like questions.** When Claude asks you something, the island shows the question and its choices with **Answer in Claude** / **Not now** (a single **Answer** button in the compact view) instead of a raw tool name with Allow/Deny.
 - **Reviewed without busywork.** A finished result moves out of *Ready to review* by itself when you reply in that session, or when you view the full result in the island (pointer over the detailed view) for about five seconds. The island opening on its own for a notification never counts, and neither does the truncated compact view. Claude Code has no "the user read this" signal, so these are the honest signals available; *Settings ▸ General* switches to fully manual, and **Open** / **Mark reviewed** always work.
 - **Approve from the island.** Tool-permission requests show the exact command with **Allow / Deny**. Requests from a
@@ -131,7 +131,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 ## Development
 
 ```bash
-make build test      # build and run the 117-test suite
+make build test      # build and run the 118-test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents

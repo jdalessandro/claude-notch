@@ -21,6 +21,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
   island for a few seconds (opt-out in Settings); manual **Open** / **Mark reviewed** remain.
 
 ### Subagents and questions
+- Per-session subagent stat ("2 running · 1 done") on every session in both views, alongside the global header count.
 - Fixed sessions showing **Idle** while background subagents were still working: the main turn's `Stop` no longer
   force-closes subagents, the session stays Working until the last one stops, and the "finished" notification waits.
 - Subagent tree: running-first ordering, per-session expand/collapse, current tool, tool-call counts, last result,
