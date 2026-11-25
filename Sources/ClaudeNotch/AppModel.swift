@@ -34,6 +34,12 @@ final class AppModel {
     var autoExpandUntil = Date.distantPast
     private(set) var expanded = false
     var hooksInstalled = HookInstaller.isInstalled()
+    /// Hooks were installed by an older version and miss events this version relies on (for example SubagentStart).
+    var hooksOutdated = false
+    func refreshHookStatus() {
+        hooksInstalled = HookInstaller.isInstalled()
+        hooksOutdated = !HookInstaller.missingEvents(interactivePermissions: prefs.approveFromIsland).isEmpty
+    }
     let settings: AppSettings
     var prefs: Preferences { settings.prefs }
     var panelWidth: CGFloat { CGFloat(prefs.panelWidth.points) }
@@ -73,6 +79,14 @@ final class AppModel {
     /// The most urgent agent; drives the collapsed island and what a click on it opens.
     var lead: AgentSession? { store.active.first }
 
+    /// Subagents running right now across all sessions (shown in the headers).
+    var runningSubagentTotal: Int { store.active.reduce(0) { $0 + $1.runningSubagents } }
+    /// Sessions whose subagent tree is shown in full (the default shows the three most relevant).
+    var expandedSubagents: Set<String> = []
+    func toggleSubagents(_ id: String) {
+        if expandedSubagents.contains(id) { expandedSubagents.remove(id) } else { expandedSubagents.insert(id) }
+    }
+
     func dismiss(_ id: String) { store.markSeen(id); reconcile() }
     func dismissAllReviewed() { store.markAllSeen(); reconcile() }
 
@@ -98,6 +112,7 @@ final class AppModel {
         }
         if demo { runDemo(); return }
         refreshInstalledForwarder()
+        refreshHookStatus()
         let srv = NotchServer { [weak self] env, reply in
             Task { @MainActor in self?.ingest(env, reply: reply) }
         }
@@ -234,7 +249,14 @@ final class AppModel {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
         let before = Set(store.sessions.keys)
-        store.prune(idleTTL: prefs.sessionRetention.seconds)
+        // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
+        let effects = store.prune(idleTTL: prefs.sessionRetention.seconds)
+        for case .notify(let id, let kind) in effects {
+            if let s = store.sessions[id], prefs.shouldNotify(kind) {
+                Notifier.post(
+                    kind: kind, session: s, sound: prefs.soundEnabled, banner: prefs.systemNotifications, details: prefs.bannerDetails)
+            }
+        }
         for gone in before.subtracting(store.sessions.keys) { await hub.forget(gone) }  // don't leak tailers of pruned sessions
         for s in store.active {
             if let p = s.transcriptPath { await refreshTranscript(id: s.id, path: p) }
@@ -315,7 +337,10 @@ final class AppModel {
     func installHooks() {
         do {
             _ = try HookInstaller.install(hookPath: try stableHookPath(), interactivePermissions: prefs.approveFromIsland)
-            hooksInstalled = true; lastError = nil
+            hooksInstalled = true
+            refreshHookStatus()
+            lastError = nil
+            refreshHookStatus()
         } catch { lastError = error.localizedDescription }
     }
 
@@ -336,7 +361,10 @@ final class AppModel {
     }
 
     func uninstallHooks() {
-        do { _ = try HookInstaller.uninstall(); hooksInstalled = false; lastError = nil } catch { lastError = error.localizedDescription }
+        do {
+            _ = try HookInstaller.uninstall(); hooksInstalled = false
+            hooksOutdated = false; lastError = nil
+        } catch { lastError = error.localizedDescription }
     }
 
     // MARK: debug log (helps verify real payload shapes across Claude Code versions)
@@ -360,9 +388,11 @@ final class AppModel {
     // MARK: demo
 
     private func runDemo() {
-        func e(_ n: String, _ sid: String, reply: Bool = false, _ cfg: (inout HookPayload) -> Void = { _ in }) -> HookEnvelope {
+        func e(
+            _ n: String, _ sid: String, reply: Bool = false, ago: TimeInterval = 0, _ cfg: (inout HookPayload) -> Void = { _ in }
+        ) -> HookEnvelope {
             var p = HookPayload(sessionId: sid, cwd: "/Users/you/code/\(sid)", hookEventName: n); cfg(&p)
-            return HookEnvelope(payload: p, termProgram: "iTerm.app", expectsReply: reply)
+            return HookEnvelope(payload: p, receivedAt: Date().addingTimeInterval(-ago), termProgram: "iTerm.app", expectsReply: reply)
         }
         // payments-api: working, with two subagents (one running, one finished)
         _ = store.apply(
@@ -378,11 +408,11 @@ final class AppModel {
                 $0.toolName = "Task"; $0.toolInput = .object(["description": .string("Draft unit tests")])
             })
         _ = store.apply(
-            e("SubagentStart", "payments-api") {
+            e("SubagentStart", "payments-api", ago: 134) {
                 $0.agentId = "a1"; $0.agentType = "Explore"
             })
         _ = store.apply(
-            e("SubagentStart", "payments-api") {
+            e("SubagentStart", "payments-api", ago: 190) {
                 $0.agentId = "a2"; $0.agentType = "general-purpose"
             })
         _ = store.apply(
@@ -390,7 +420,7 @@ final class AppModel {
                 $0.agentId = "a1"; $0.agentType = "Explore"; $0.toolName = "Grep"; $0.toolInput = .object(["pattern": .string("retry\\(")])
             })
         _ = store.apply(
-            e("SubagentStop", "payments-api") {
+            e("SubagentStop", "payments-api", ago: 50) {
                 $0.agentId = "a2"; $0.lastAssistantMessage = "Added 6 tests in RetryTests.swift"
             })
         _ = store.apply(
@@ -400,7 +430,7 @@ final class AppModel {
         // web-dashboard: a subagent is asking permission
         _ = store.apply(e("UserPromptSubmit", "web-dashboard") { $0.prompt = "Fix the flaky chart tooltip" })
         _ = store.apply(
-            e("SubagentStart", "web-dashboard") {
+            e("SubagentStart", "web-dashboard", ago: 41) {
                 $0.agentId = "w1"; $0.agentType = "general-purpose"
             })
         _ = store.apply(
@@ -420,6 +450,34 @@ final class AppModel {
                 ])
                 $0.toolInput = .object(["questions": .array([q])])
             })
+        // infra-tools: the main turn ended, but two background subagents are still working
+        _ = store.apply(e("UserPromptSubmit", "infra-tools") { $0.prompt = "Migrate the CI pipeline to the new runners" })
+        _ = store.apply(
+            e("PreToolUse", "infra-tools") {
+                $0.toolName = "Task"; $0.toolInput = .object(["description": .string("Audit workflow files")])
+            })
+        _ = store.apply(
+            e("PreToolUse", "infra-tools") {
+                $0.toolName = "Task"; $0.toolInput = .object(["description": .string("Draft the runner config")])
+            })
+        _ = store.apply(
+            e("SubagentStart", "infra-tools", ago: 312) {
+                $0.agentId = "i1"; $0.agentType = "Explore"
+            })
+        _ = store.apply(
+            e("SubagentStart", "infra-tools", ago: 95) {
+                $0.agentId = "i2"; $0.agentType = "general-purpose"
+            })
+        _ = store.apply(
+            e("PreToolUse", "infra-tools") {
+                $0.agentId = "i1"; $0.agentType = "Explore"; $0.toolName = "Grep"; $0.toolInput = .object(["pattern": .string("runs-on")])
+            })
+        _ = store.apply(
+            e("PreToolUse", "infra-tools") {
+                $0.agentId = "i2"; $0.agentType = "general-purpose"; $0.toolName = "Write";
+                $0.toolInput = .object(["file_path": .string("runners.yml")])
+            })
+        _ = store.apply(e("Stop", "infra-tools") { $0.lastAssistantMessage = "Started two agents on the migration." })
         // docs-site: finished, waiting for review
         _ = store.apply(e("UserPromptSubmit", "docs-site") { $0.prompt = "Write a migration guide for v2 and link it from the sidebar" })
         _ = store.apply(
@@ -432,7 +490,7 @@ final class AppModel {
         store.markSeen("notes-cli")
         for (id, ctx, cost, tok) in [
             ("payments-api", 0.42, 1.87, 412_000), ("web-dashboard", 0.71, 3.20, 880_000), ("docs-site", 0.18, 0.34, 96_000),
-            ("notes-cli", 0.1, 0.12, 21_000), ("api-gateway", 0.33, 0.9, 150_000),
+            ("notes-cli", 0.1, 0.12, 21_000), ("api-gateway", 0.33, 0.9, 150_000), ("infra-tools", 0.25, 0.7, 120_000),
         ] {
             store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok)
         }

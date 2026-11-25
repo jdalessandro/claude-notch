@@ -36,6 +36,9 @@ public struct Subagent: Sendable, Identifiable, Equatable {
     public var startedAt: Date
     public var endedAt: Date?
     public var lastMessage: String?
+    public var lastEventAt: Date?
+    /// When we last heard from this subagent (any of its events).
+    public var lastSeen: Date { lastEventAt ?? startedAt }
     public var label: String { description ?? type }
 }
 
@@ -124,9 +127,18 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
     public var unseen = false
     public var toolCalls = 0
     public var subagents: [String: Subagent] = [:]
+    /// The main agent's turn has ended (Stop). Background subagents can still be running after this.
+    public var mainTurnEnded = false
     /// Descriptions of Task/Agent tool calls not yet matched to a started subagent.
     var taskQueue: [String] = []
     public var orderedSubagents: [Subagent] { subagents.values.sorted { $0.startedAt < $1.startedAt } }
+    /// For the tree: what is running now first (oldest first), then finished ones, most recently finished first.
+    public var rankedSubagents: [Subagent] {
+        let all = subagents.values
+        let running = all.filter { $0.status == .running }.sorted { $0.startedAt < $1.startedAt }
+        let done = all.filter { $0.status == .done }.sorted { ($0.endedAt ?? $0.startedAt) > ($1.endedAt ?? $1.startedAt) }
+        return running + done
+    }
     public var runningSubagents: Int { subagents.values.filter { $0.status == .running }.count }
     mutating func takeTaskDescription() -> String? { taskQueue.isEmpty ? nil : taskQueue.removeFirst() }
     // Usage (from transcript)
@@ -219,6 +231,8 @@ public struct SessionStore: Sendable {
                 }
             default: break
             }
+            sub.lastEventAt = now
+            if sub.status == .running { Self.wakeForSubagent(&s, now: now) }
             s.subagents[aid] = sub
             sessions[sid] = s
             return .none
@@ -237,18 +251,27 @@ public struct SessionStore: Sendable {
                 s.subagents[aid] = Subagent(
                     id: aid, type: p.agentType ?? "agent",
                     description: s.takeTaskDescription(), startedAt: now)
+                Self.wakeForSubagent(&s, now: now)
             }
 
         case "SubagentStop":
             if let aid = p.agentId, !aid.isEmpty {
                 var sub = s.subagents[aid] ?? Subagent(id: aid, type: p.agentType ?? "agent", startedAt: now)
-                sub.status = .done; sub.endedAt = now; sub.currentDetail = nil
+                sub.status = .done
+                sub.endedAt = now
+                sub.lastEventAt = now
+                sub.currentDetail = nil
                 if let m = p.lastAssistantMessage, !m.isEmpty { sub.lastMessage = m }
                 s.subagents[aid] = sub
             }
+            // The main turn already ended and this was the last subagent: the work is now actually done.
+            if s.mainTurnEnded, s.runningSubagents == 0, s.status != .ended {
+                Self.finishTurn(&s)
+                effect = .notify(sessionId: sid, kind: .finished)
+            }
 
         case "UserPromptSubmit":
-            s.subagents = [:]; s.taskQueue = []
+            s.subagents = [:]; s.taskQueue = []; s.mainTurnEnded = false
             s.status = .working; s.workingSince = now; s.unseen = false
             s.pending = nil; s.attentionMessage = nil
             if let pr = p.prompt, !pr.isEmpty, !Fmt.isSyntheticPrompt(pr) { s.lastPrompt = pr }
@@ -323,14 +346,20 @@ public struct SessionStore: Sendable {
             if s.status == .compacting { s.status = s.workingSince != nil ? .working : .done }
 
         case "Stop":
+            s.mainTurnEnded = true
             if let w = s.workingSince { s.lastTurnDuration = now.timeIntervalSince(w) }
-            s.workingSince = nil; s.currentTool = nil; s.currentToolDetail = nil; s.pending = nil
+            s.currentTool = nil
+            s.currentToolDetail = nil
+            s.pending = nil
             if let m = p.lastAssistantMessage, !m.isEmpty { s.lastMessage = m }
-            for k in s.subagents.keys where s.subagents[k]?.status == .running {
-                s.subagents[k]?.status = .done; s.subagents[k]?.endedAt = now; s.subagents[k]?.currentDetail = nil
+            if s.runningSubagents > 0 {
+                // Background subagents outlive the main turn. The session is still working (not idle) and the
+                // "finished" notification waits for the last one to stop.
+                if s.status != .needsInput { s.status = .working }
+            } else {
+                Self.finishTurn(&s)
+                effect = .notify(sessionId: sid, kind: .finished)
             }
-            if s.status != .needsInput { s.status = .done; s.unseen = true }
-            effect = .notify(sessionId: sid, kind: .finished)
 
         case "StopFailure":
             s.status = .failed; s.unseen = true; s.workingSince = nil; s.pending = nil
@@ -338,12 +367,33 @@ public struct SessionStore: Sendable {
             effect = .notify(sessionId: sid, kind: .failed)
 
         case "SessionEnd":
+            for k in s.subagents.keys where s.subagents[k]?.status == .running {
+                s.subagents[k]?.status = .done; s.subagents[k]?.endedAt = now
+            }
             s.status = .ended; s.workingSince = nil; s.pending = nil; s.unseen = false
 
         default: break  // SubagentStop etc: just refresh lastEventAt
         }
         sessions[sid] = s
         return effect
+    }
+
+    /// Subagent activity wakes a session the main turn already marked done: background subagents routinely outlive
+    /// (or start after) the main agent's `Stop`, and a session with running subagents is not idle.
+    static func wakeForSubagent(_ s: inout AgentSession, now: Date) {
+        guard s.status == .done else { return }  // ended, failed, or waiting on the user stay as they are
+        s.status = .working
+        s.unseen = false
+        if s.workingSince == nil { s.workingSince = now }
+    }
+
+    /// Marks the turn as complete: idle, unseen result waiting for review.
+    static func finishTurn(_ s: inout AgentSession) {
+        s.workingSince = nil
+        s.currentTool = nil
+        s.currentToolDetail = nil
+        if s.status != .needsInput { s.status = .done }
+        s.unseen = true
     }
 
     /// Merge transcript-derived numbers into a session.
@@ -399,13 +449,33 @@ public struct SessionStore: Sendable {
     }
 
     /// Drop ended sessions after `endedTTL`, and idle sessions with no events for `idleTTL`.
-    public mutating func prune(now: Date = Date(), endedTTL: TimeInterval = 120, idleTTL: TimeInterval = 12 * 3600) {
+    /// Drops ended sessions after `endedTTL` and idle ones after `idleTTL`. A subagent silent for `subagentStale`
+    /// after the main turn ended is treated as finished (it crashed or never reported a stop), so the session cannot
+    /// stay "working" forever; the resulting "finished" notifications are returned for the caller to deliver.
+    @discardableResult
+    public mutating func prune(
+        now: Date = Date(), endedTTL: TimeInterval = 120, idleTTL: TimeInterval = 12 * 3600, subagentStale: TimeInterval = 900
+    ) -> [Effect] {
+        var effects: [Effect] = []
+        for (id, var s) in sessions where s.mainTurnEnded && s.runningSubagents > 0 {
+            let running = s.subagents.values.filter { $0.status == .running }
+            guard running.allSatisfy({ now.timeIntervalSince($0.lastSeen) > subagentStale }) else { continue }
+            for k in s.subagents.keys where s.subagents[k]?.status == .running {
+                s.subagents[k]?.status = .done
+                s.subagents[k]?.endedAt = now
+                s.subagents[k]?.currentDetail = nil
+            }
+            Self.finishTurn(&s)
+            sessions[id] = s
+            effects.append(.notify(sessionId: id, kind: .finished))
+        }
         sessions = sessions.filter { _, s in
             let age = now.timeIntervalSince(s.lastEventAt)
             if s.status == .ended { return age < endedTTL }
             if s.pending?.canAnswer == true { return age < 900 }
             return age < idleTTL
         }
+        return effects
     }
 
     /// Human summary of what a tool call is doing, e.g. `Bash: swift build`.

@@ -126,4 +126,22 @@ import Testing
                 == .skippedExisting(command: "(custom status line)"))
         #expect(try bytes(f) == before)
     }
+
+    @Test func detectsAnInstallThatPredatesNewerEvents() throws {
+        let d = try dir(); let f = d.appendingPathComponent("settings.json")
+        #expect(HookInstaller.missingEvents(interactivePermissions: true, settings: f).isEmpty)  // nothing installed: nothing to update
+        // An older install: ours on only a few events (no SubagentStart), alongside someone else's hook.
+        let ours = #"{"type":"command","command":"\"/x/claude-notch-hook\""}"#
+        try
+            (#"{"hooks":{"Stop":[{"hooks":["# + ours + #"]}],"SubagentStop":[{"hooks":["# + ours
+            + #"]}],"SubagentStart":[{"hooks":[{"type":"command","command":"/usr/bin/other"}]}]}}"#)
+            .write(to: f, atomically: true, encoding: .utf8)
+        let missing = HookInstaller.missingEvents(interactivePermissions: false, settings: f)
+        // someone else's hook doesn't count as ours
+        #expect(missing.contains("SubagentStart") && missing.contains("PreToolUse") && !missing.contains("Stop"))
+        #expect(!missing.contains("PermissionRequest"))  // observe-only: not expected
+        #expect(HookInstaller.missingEvents(interactivePermissions: true, settings: f).contains("PermissionRequest"))
+        _ = try HookInstaller.install(hookPath: "/x/claude-notch-hook", interactivePermissions: true, settings: f)
+        #expect(HookInstaller.missingEvents(interactivePermissions: true, settings: f).isEmpty)  // a fresh install is complete
+    }
 }

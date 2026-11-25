@@ -193,6 +193,22 @@ public enum HookInstaller {
         }
     }
 
+    /// Events a complete install registers but which our hook is missing from. Empty when hooks are not installed at
+    /// all (nothing to update). Lets the app notice an install made by an older version (for example one that
+    /// predates `SubagentStart`, without which subagents are only noticed at their first tool call).
+    public static func missingEvents(interactivePermissions: Bool, settings: URL = Paths.claudeSettings) -> [String] {
+        guard isInstalled(settings: settings), let file = try? SettingsFile(settings),
+            let hooks = file.root["hooks"] as? [String: Any]
+        else { return [] }
+        let expected = observedEvents + (interactivePermissions ? [permissionEvent] : [])
+        return expected.filter { event in
+            let groups = hooks[event] as? [[String: Any]] ?? []
+            return !groups.contains { g in
+                (g["hooks"] as? [[String: Any]])?.contains { isOurs($0["command"] as? String) } == true
+            }
+        }
+    }
+
     // MARK: status line (quota gauges). Single-slot setting, so we only claim it when it is free.
 
     public enum StatusLineResult: Equatable { case installed, alreadyInstalled, skippedExisting(command: String) }

@@ -19,7 +19,9 @@ extension AgentStatus {
 extension AgentSession {
     var activity: String {
         switch status {
-        case .working: currentToolDetail ?? "Thinking…"
+        case .working:
+            mainTurnEnded && runningSubagents > 0
+                ? "Waiting on \(runningSubagents) subagent\(runningSubagents == 1 ? "" : "s")" : (currentToolDetail ?? "Thinking…")
         case .compacting: "Compacting context…"
         case .needsPermission: "Needs your approval"
         case .needsInput: "Waiting for you"
@@ -264,42 +266,21 @@ struct ExpandedView: View {
         let totalCost = sessions.reduce(0) { $0 + $1.costUSD }
         let running = sessions.reduce(0) { $0 + $1.runningSubagents }
         VStack(spacing: 0) {
-            // Header band sits beside the hardware pill.
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkle").foregroundStyle(coral)
-                    Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
-
+            // The header shares its row with the hardware cutout: each side gets a computed safe width and picks the
+            // longest wording that fits, so nothing ever runs underneath the cutout.
+            NotchHeaderRow(geometry: geometry, islandWidth: model.panelWidth, height: headerH) {
+                AgentCountTitle(model: model, count: sessions.count)
+            } right: {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        Text(model.showCost ? "\(Fmt.tokens(totalTokens)) tok · \(Fmt.cost(totalCost))" : "\(Fmt.tokens(totalTokens)) tok")
+                            .monospacedDigit()
+                        HeaderActions(model: model, compact: false)
+                    }.fixedSize()
+                    HeaderActions(model: model, compact: false).fixedSize()
                 }
-                .padding(.leading, 20)
-                Spacer(minLength: geometry.notchWidth)
-                HStack(spacing: 10) {
-                    Text(model.showCost ? "\(Fmt.tokens(totalTokens)) tok · \(Fmt.cost(totalCost))" : "\(Fmt.tokens(totalTokens)) tok")
-                        .monospacedDigit()
-                    if sessions.contains(where: { $0.needsReview }) {
-                        Button {
-                            model.dismissAllReviewed()
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                        }
-                        .buttonStyle(.plain).help("Mark all reviewed")
-                    }
-                    Button {
-                        model.toggleExpandedMode()
-                    } label: {
-                        Image(systemName: "rectangle.compress.vertical")
-                    }.buttonStyle(.plain).help("Switch to compact view")
-                    Button {
-                        model.pinned.toggle()
-                    } label: {
-                        Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
-                    }.buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
-                }
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .lineLimit(1).fixedSize()
-                .padding(.trailing, 20)
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .frame(height: headerH)
 
             Group {
                 if sessions.isEmpty {
@@ -407,6 +388,22 @@ func quotaColor(_ fraction: Double) -> Color {
     fraction >= 0.90 ? Color(red: 0.86, green: 0.27, blue: 0.27) : fraction >= 0.75 ? Color(red: 0.96, green: 0.72, blue: 0.26) : quotaBlue
 }
 
+/// A small round icon button (refresh, settings, ...), quieter than a text row.
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .background(Color.white.opacity(0.08), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain).help(help)
+    }
+}
+
 struct UsageCard: View {
     @Bindable var model: AppModel
 
@@ -415,29 +412,26 @@ struct UsageCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("PLAN USAGE LIMITS" + (model.planName.map { " · \($0.uppercased())" } ?? ""))
                     .font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
-                Spacer()
-                UsageModeToggle(model: model)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                IconButton(symbol: "arrow.clockwise", help: "Refresh usage") { model.refreshUsageNow() }
+                IconButton(symbol: "gearshape", help: "Usage settings") { model.openUsageSettings() }
             }
 
             if showingPercent { limits } else { tokens }
 
-            Divider().overlay(Color.white.opacity(0.08))
-
             HStack {
-                Button("Refresh") { model.refreshUsageNow() }.buttonStyle(.plain).font(.system(size: 13))
-                Spacer()
+                UsageModeToggle(model: model)
+                Spacer(minLength: 6)
                 if let u = updated {
                     TimelineView(.periodic(from: .now, by: 15)) { c in
-                        Text("Updated \(Fmt.ago(u, now: c.date))").font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 9).padding(.vertical, 3)
-                            .background(Color.white.opacity(0.10), in: Capsule())
+                        Text("Updated \(Fmt.ago(u, now: c.date))").font(.system(size: 10.5)).foregroundStyle(.secondary)
                     }
                 }
             }
-            Button("Usage settings…") { model.openUsageSettings() }.buttonStyle(.plain).font(.system(size: 13))
         }
         .padding(Metrics.inset + 4)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -555,7 +549,7 @@ struct SessionCard: View {
             if !compact {
                 if model.prefs.showPrompt, let prompt = s.lastPrompt { LabeledText(label: "You", text: prompt, lines: 2) }
                 if s.status == .working || s.status == .compacting { activityLine }
-                if model.prefs.showSubagents, !s.subagents.isEmpty { SubagentList(session: s) }
+                if model.prefs.showSubagents, !s.subagents.isEmpty { SubagentList(model: model, session: s) }
                 request
                 if model.prefs.showContextMeter { meta }
             }
@@ -585,7 +579,9 @@ struct SessionCard: View {
                         TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(w))).monospacedDigit()
                         }
                     } else {
-                        Text(s.lastTurnDuration.map(Fmt.duration) ?? Fmt.label(s.status))
+                        Text(
+                            s.lastTurnDuration.map(Fmt.duration) ?? (s.pending?.isQuestion == true ? "Has a question" : Fmt.label(s.status))
+                        )
                     }
                 }
                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
@@ -670,18 +666,56 @@ struct LabeledText: View {
     }
 }
 
+/// The session's subagents as a small tree: running ones first, with what each is doing right now.
+/// Collapsed it shows the three most relevant; tap the header to explore all of them with their details.
 struct SubagentList: View {
+    let model: AppModel
     let session: AgentSession
+    private var expanded: Bool { model.expandedSubagents.contains(session.id) }
+
     var body: some View {
-        let subs = session.orderedSubagents
-        let shown = Array(subs.suffix(4))
+        let subs = session.rankedSubagents
+        let shown = expanded ? subs : Array(subs.prefix(3))
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .semibold))
-                Text("SUBAGENTS").font(.system(size: 9, weight: .bold)).tracking(0.5)
-                Text(session.runningSubagents > 0 ? "\(session.runningSubagents) running" : "all done").font(.system(size: 9.5))
-            }.foregroundStyle(.secondary)
-            ForEach(shown) { sub in
+            Button {
+                model.toggleSubagents(session.id)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 7.5, weight: .bold))
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .semibold))
+                    Text("SUBAGENTS").font(.system(size: 9, weight: .bold)).tracking(0.5)
+                    Text(session.runningSubagents > 0 ? "\(session.runningSubagents) running" : "all done").font(.system(size: 9.5))
+                    Spacer(minLength: 4)
+                    if subs.count > 3 {
+                        Text(expanded ? "Show less" : "Show all \(subs.count)").font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    }
+                }
+                .foregroundStyle(.secondary).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            ForEach(Array(shown.enumerated()), id: \.element.id) { i, sub in
+                SubagentRow(sub: sub, isLast: i == shown.count - 1, detailed: expanded)
+            }
+        }
+        .padding(.leading, 4)
+    }
+}
+
+struct SubagentRow: View {
+    let sub: Subagent
+    let isLast: Bool
+    let detailed: Bool
+
+    private var detail: String {
+        if sub.status == .running { return sub.currentDetail ?? sub.description ?? "working…" }
+        return sub.lastMessage.map(Fmt.plainText) ?? sub.description ?? "done"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            // Tree branch glyph: ├ for siblings, └ for the last child.
+            Text(isLast ? "└" : "├").font(.system(size: 11, design: .monospaced)).foregroundStyle(Color.white.opacity(0.25)).frame(
+                width: 10)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Group {
                         if sub.status == .running {
@@ -691,26 +725,37 @@ struct SubagentList: View {
                         }
                     }.frame(width: 6, height: 6)
                     Text(sub.type).font(.system(size: 11, weight: .semibold)).lineLimit(1).fixedSize()
-                    Text(detail(sub)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    if detailed {
+                        if let d = sub.description {
+                            Text(d).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    } else {
+                        Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    }
                     Spacer(minLength: 4)
+                    // How long it has been working (live), or how long it took.
                     if sub.status == .running {
-                        TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(sub.startedAt))) }
+                        HStack(spacing: 3) {
+                            Image(systemName: "timer").font(.system(size: 8.5))
+                            TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(sub.startedAt))) }
+                        }.foregroundStyle(coral.opacity(0.95))
                     } else if let e = sub.endedAt {
-                        Text(Fmt.duration(e.timeIntervalSince(sub.startedAt)))
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark").font(.system(size: 8, weight: .bold))
+                            Text(Fmt.duration(e.timeIntervalSince(sub.startedAt)))
+                        }.foregroundStyle(Color.green.opacity(0.85))
                     }
                 }
                 .font(.system(size: 10.5)).monospacedDigit()
-                .frame(height: 15)
+                if detailed {
+                    Text(detail)
+                        .font(.system(size: 11, design: sub.status == .running ? .monospaced : .default))
+                        .foregroundStyle(sub.status == .running ? coral.opacity(0.95) : Color.secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text("\(sub.toolCalls) tool call\(sub.toolCalls == 1 ? "" : "s")").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
             }
-            if subs.count > shown.count { Text("+\(subs.count - shown.count) earlier").font(.system(size: 10)).foregroundStyle(.tertiary) }
         }
-        .padding(.leading, 9)
-        .overlay(alignment: .leading) { Capsule().fill(Color.white.opacity(0.14)).frame(width: 2) }
-    }
-
-    private func detail(_ sub: Subagent) -> String {
-        if sub.status == .running { return sub.currentDetail ?? sub.description ?? "working…" }
-        return sub.lastMessage.map { $0.replacingOccurrences(of: "\n", with: " ") } ?? sub.description ?? "done"
     }
 }
 
@@ -808,7 +853,10 @@ struct FooterView: View {
     @Bindable var model: AppModel
     var body: some View {
         HStack(spacing: 10) {
-            if model.hooksInstalled {
+            if model.hooksInstalled && model.hooksOutdated {
+                // Installed by an older version: missing events (e.g. SubagentStart) mean subagents are noticed late.
+                ChipButton(title: "Update hooks", tint: amber, filled: true) { model.installHooks() }
+            } else if model.hooksInstalled {
                 Label("Hooks active", systemImage: "checkmark.seal.fill").font(.system(size: 10.5)).foregroundStyle(.green.opacity(0.9))
             } else {
                 ChipButton(title: "Install hooks", tint: coral, filled: true) { model.installHooks() }
@@ -837,6 +885,83 @@ struct IslandMenu: View {
 
 // MARK: - Compact (abbreviated) view: one line per session
 
+/// One header row with a safe zone for the hardware cutout: left and right groups are each limited to
+/// `SafeZone.sideWidth`, with the cutout (plus margin) left empty between them.
+struct NotchHeaderRow<Left: View, Right: View>: View {
+    let geometry: NotchGeometry
+    let islandWidth: CGFloat
+    let height: CGFloat
+    @ViewBuilder var left: Left
+    @ViewBuilder var right: Right
+
+    var body: some View {
+        let side = CGFloat(SafeZone.sideWidth(islandWidth: Double(islandWidth), cutoutWidth: Double(geometry.notchWidth)))
+        HStack(spacing: 0) {
+            left.frame(width: side, alignment: .leading)
+            Spacer(minLength: 0)
+            right.frame(width: side, alignment: .trailing)
+        }
+        .padding(.horizontal, CGFloat(SafeZone.outerPadding))
+        .frame(height: height)
+    }
+}
+
+/// "3 agents · 2 sub", shrinking to "3 · 2 sub" and then "3" when the side is narrow.
+struct AgentCountTitle: View {
+    let model: AppModel
+    let count: Int
+
+    private func row(_ word: Bool, _ subs: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkle").foregroundStyle(coral)
+            Text(word ? "\(count) agent\(count == 1 ? "" : "s")" : "\(count)").font(.system(size: 12, weight: .semibold))
+            if subs, model.runningSubagentTotal > 0 {
+                Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1).fixedSize()
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row(true, true)
+            row(false, true)
+            row(false, false)
+        }
+    }
+}
+
+/// Mark-reviewed, compact/detailed switch and pin: the header's icon buttons.
+struct HeaderActions: View {
+    @Bindable var model: AppModel
+    let compact: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if model.store.active.contains(where: { $0.needsReview }) {
+                Button {
+                    model.dismissAllReviewed()
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                }
+                .buttonStyle(.plain).help("Mark all reviewed")
+            }
+            Button {
+                model.toggleExpandedMode()
+            } label: {
+                Image(systemName: compact ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+            }
+            .buttonStyle(.plain).help(compact ? "Switch to detailed view" : "Switch to compact view")
+            Button {
+                model.pinned.toggle()
+            } label: {
+                Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
+            }
+            .buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
+        }
+    }
+}
+
 struct CompactView: View {
     @Bindable var model: AppModel
     let geometry: NotchGeometry
@@ -846,38 +971,12 @@ struct CompactView: View {
         let sessions = model.store.active
         let shown = Array(sessions.prefix(CompactLayout.maxRows))
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkle").foregroundStyle(coral)
-                    Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
-                }
-                .padding(.leading, 20)
-                Spacer(minLength: geometry.notchWidth)
-                HStack(spacing: 10) {
-                    if sessions.contains(where: { $0.needsReview }) {
-                        Button {
-                            model.dismissAllReviewed()
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                        }
-                        .buttonStyle(.plain).help("Mark all reviewed")
-                    }
-                    Button {
-                        model.toggleExpandedMode()
-                    } label: {
-                        Image(systemName: "rectangle.expand.vertical")
-                    }.buttonStyle(.plain).help("Switch to detailed view")
-                    Button {
-                        model.pinned.toggle()
-                    } label: {
-                        Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
-                    }.buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
-                }
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .lineLimit(1).fixedSize()
-                .padding(.trailing, 20)
+            NotchHeaderRow(geometry: geometry, islandWidth: min(model.panelWidth, CGFloat(CompactLayout.width)), height: headerH) {
+                AgentCountTitle(model: model, count: sessions.count)
+            } right: {
+                HeaderActions(model: model, compact: true).fixedSize()
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .frame(height: headerH)
 
             Group {
                 if sessions.isEmpty {
@@ -915,7 +1014,7 @@ struct CompactRow: View {
         switch s.status {
         case .needsInput, .failed: return s.attentionMessage ?? Fmt.label(s.status)
         case .working, .compacting:
-            let sub = s.runningSubagents > 0 ? " · \(s.runningSubagents) sub" : ""
+            let sub = (s.runningSubagents > 0 && !s.mainTurnEnded) ? " · \(s.runningSubagents) sub" : ""
             return s.activity + sub
         case .done: return s.needsReview ? (s.lastMessage.map(Fmt.plainText) ?? "Done") : "Idle"
         default: return Fmt.label(s.status)

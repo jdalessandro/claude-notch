@@ -59,8 +59,9 @@ func renderSnapshots(to dir: String) {
     let model = AppModel(defaults: suite)
     model.snapshotMode = true
     model.start(demo: true)
-    let geo = NotchGeometry(screen: NSScreen.screens[0], notchWidth: 73, notchHeight: 40, hasHardwareNotch: true, floating: true)
-    func shot(_ name: String, height: CGFloat) {
+    let defaultGeo = NotchGeometry(screen: NSScreen.screens[0], notchWidth: 73, notchHeight: 40, hasHardwareNotch: true, floating: true)
+    func shot(_ name: String, height: CGFloat, geometry: NotchGeometry? = nil, showCutout: Bool = false) {
+        let geo = geometry ?? defaultGeo
         model.reconcile()
         let view = NotchRootView(model: model, geometry: geo) { _ in }
         let bg = LinearGradient(
@@ -68,7 +69,14 @@ func renderSnapshots(to dir: String) {
             endPoint: .bottom)
         let r = ImageRenderer(
             content: ZStack {
-                bg; view.frame(width: 600, height: height, alignment: .top)
+                bg;
+                view.frame(width: 600, height: height, alignment: .top)
+                    .overlay(alignment: .top) {
+                        // Debug aid: the hardware cutout (incl. its margin) drawn in red, to see any overlap.
+                        if showCutout {
+                            Rectangle().fill(Color.red.opacity(0.35)).frame(width: geo.notchWidth, height: geo.notchHeight)
+                        }
+                    }
             }.frame(width: 600, height: height))
         r.scale = 2
         if let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
@@ -82,12 +90,25 @@ func renderSnapshots(to dir: String) {
     model.settings.prefs.expandedMode = .compact
     shot("expanded-compact", height: 520)
     model.settings.prefs.expandedMode = .detailed
-    shot("expanded-needs-you", height: 1200)
+    shot("expanded-needs-you", height: 1500)
     // Resolve the request and let the subagent finish so the "review / working / idle" mix is visible.
     model.store.resolvePermission("web-dashboard", allowed: true)
+    model.expandedSubagents.insert("infra-tools")  // show the explorable subagent tree
     model.store.markSeen("web-dashboard")
-    shot("expanded-mixed", height: 1200)
+    shot("expanded-mixed", height: 1500)
     model.pinned = false
     model.store.markSeen("docs-site")
     shot("collapsed", height: 120)
+    // Safe-zone verification (debug): render both layouts with the cutout drawn in red, at the real cutout width and
+    // at a much wider one, to confirm no header text ever runs underneath it.
+    if ProcessInfo.processInfo.environment["CLAUDE_NOTCH_SNAPSHOT_DEBUG"] != nil {
+        let wide = NotchGeometry(screen: NSScreen.screens[0], notchWidth: 150, notchHeight: 40, hasHardwareNotch: true, floating: true)
+        model.pinned = true
+        model.settings.prefs.expandedMode = .compact
+        shot("debug-compact", height: 200, showCutout: true)
+        shot("debug-compact-wide-cutout", height: 200, geometry: wide, showCutout: true)
+        model.settings.prefs.expandedMode = .detailed
+        shot("debug-detailed", height: 200, showCutout: true)
+        shot("debug-detailed-wide-cutout", height: 200, geometry: wide, showCutout: true)
+    }
 }

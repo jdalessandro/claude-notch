@@ -229,6 +229,13 @@ struct IntegrationTab: View {
                     Button(model.hooksInstalled ? "Reinstall" : "Install hooks") { model.installHooks() }
                     if model.hooksInstalled { Button("Uninstall", role: .destructive) { model.uninstallHooks() } }
                 }
+                if model.hooksOutdated {
+                    Label(
+                        "An update is available: your hooks predate SubagentStart, so subagents are noticed late.",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    .font(.callout).foregroundStyle(.orange)
+                }
                 Toggle("Approve permissions from the island", isOn: $settings.prefs.approveFromIsland)
             } header: {
                 Text("Claude Code hooks")

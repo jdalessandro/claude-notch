@@ -62,6 +62,15 @@ samples the real pointer position at 20 Hz against the island's **final** rectan
 (dwell to open, grace period to close). Animations use one critically damped curve with no overshoot, list heights are
 measured and quantized, and while collapsed the transparent window margins are click-through.
 
+## Safe zone around the cutout
+
+The header row shares its band with the opaque hardware cutout. `SafeZone.sideWidth` (core, tested) gives each side of the
+header the width left beside the cutout after a margin and the island's outer padding. `NotchHeaderRow` limits the left
+and right groups to that width, and each group lists its wordings longest-first inside a `ViewThatFits` ("3 agents · 2 sub"
+-> "3 · 2 sub" -> "3"; tokens + icons -> icons), so text degrades instead of running underneath the cutout. To check a
+layout, run `CLAUDE_NOTCH_SNAPSHOT_DEBUG=1 .build/debug/ClaudeNotch --snapshot <dir>`: it renders the headers with the
+cutout drawn in red, at the real width and at a much wider one.
+
 ## Geometry
 
 `NotchGeometry` reads `NSScreen.safeAreaInsets` and the auxiliary areas for the cutout. The floating style offsets
