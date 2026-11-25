@@ -16,6 +16,10 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - `claude-notch-hook` forwarder with `--install`/`--uninstall`/`--statusline`, merging safely into
   `~/.claude/settings.json`.
 
+### Review
+- Results are marked reviewed automatically when you reply in that session or deliberately view the full result in the
+  island for a few seconds (opt-out in Settings); manual **Open** / **Mark reviewed** remain.
+
 ### Subagents and questions
 - Fixed sessions showing **Idle** while background subagents were still working: the main turn's `Stop` no longer
   force-closes subagents, the session stays Working until the last one stops, and the "finished" notification waits.

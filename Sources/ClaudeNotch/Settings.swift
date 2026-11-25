@@ -119,6 +119,7 @@ struct GeneralTab: View {
                     Text("Short").tag(Preferences.HoverDelay.short)
                     Text("Long").tag(Preferences.HoverDelay.long)
                 }.disabled(!settings.prefs.expandOnHover)
+                Toggle("Mark results as reviewed automatically", isOn: $settings.prefs.autoMarkReviewed)
                 Toggle("Open automatically when something happens", isOn: $settings.prefs.autoExpandOnEvents)
                 Stepper(
                     "Stay open for \(settings.prefs.autoExpandSeconds) seconds",
@@ -135,7 +136,7 @@ struct GeneralTab: View {
                 Text("Behavior")
             } footer: {
                 hint(
-                    "Switch between compact and detailed from the island header; your choice is remembered. With hover off, click the island to open it and use the pin to keep it open. Approval requests always open it."
+                    "Switch between compact and detailed from the island header; your choice is remembered. With hover off, click the island to open it and use the pin to keep it open. Approval requests always open it. Results are marked reviewed when you reply in that session, or when you view the full result here (pointer over the detailed view) for a few seconds; turn that off to dismiss them yourself."
                 )
             }
         }

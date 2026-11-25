@@ -77,6 +77,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var usageDisplay = UsageDisplay.percent
     /// Include command text / prompt snippets in system banners (they can appear on a locked screen).
     public var bannerDetails = true
+    /// Mark a finished result reviewed when the user replies in that session or views the full result in the island.
+    public var autoMarkReviewed = true
     // Advanced
     public var logRawEvents = false
 
@@ -117,6 +119,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         load(\.notifyOnPermission, "notifyOnPermission"); load(\.notifyOnInput, "notifyOnInput")
         load(\.notifyOnFinished, "notifyOnFinished"); load(\.notifyOnFailed, "notifyOnFailed")
         load(\.approveFromIsland, "approveFromIsland"); load(\.costDisplay, "costDisplay"); load(\.usageDisplay, "usageDisplay");
+        load(\.autoMarkReviewed, "autoMarkReviewed");
         load(\.bannerDetails, "bannerDetails")
         load(\.logRawEvents, "logRawEvents")
         autoExpandSeconds = min(30, max(2, autoExpandSeconds))

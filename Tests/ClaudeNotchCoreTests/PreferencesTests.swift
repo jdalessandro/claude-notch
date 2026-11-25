@@ -55,4 +55,12 @@ import Testing
         #expect(p.shouldNotify(.permission) && p.shouldNotify(.input) && p.shouldNotify(.failed))
         #expect(!p.shouldNotify(.finished))
     }
+
+    @Test func automaticReviewDefaultsOnAndCanBeSwitchedOff() throws {
+        #expect(Preferences().autoMarkReviewed)
+        var p = Preferences(); p.autoMarkReviewed = false
+        let d = suite(); p.save(d)
+        #expect(Preferences.load(d).autoMarkReviewed == false)
+        #expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).autoMarkReviewed)  // older settings: default on
+    }
 }
