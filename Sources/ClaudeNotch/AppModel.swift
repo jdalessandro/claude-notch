@@ -64,7 +64,7 @@ final class AppModel {
     }
     var planName: String? { if case .subscription(let p) = billing { return p ?? "Subscription" }; return nil }
     var usage = UsageWindows()
-    var quota: QuotaState?
+    var quota: QuotaState? = QuotaState.load()  // remembered from the last terminal session that reported
     /// The quota as of now: windows whose reset time has passed read as freshly reset, not as stale percentages.
     var quotaNow: QuotaState? { quota?.refreshed() }
     var statusLineInstalled = HookInstaller.isStatusLineInstalled()
@@ -148,7 +148,10 @@ final class AppModel {
 
     /// Status-line payloads carry the real quota windows (subscribers) and the exact context window.
     private func handleStatusLine(_ p: HookPayload) {
-        if let q = QuotaState.parse(p.rateLimits) { quota = q }
+        if let q = QuotaState.parse(p.rateLimits) {
+            quota = q
+            q.save()
+        }
         if case .number(let n)? = p.contextWindow?["context_window_size"], let sid = p.sessionId {
             store.setExactContextWindow(Int(n), for: sid)
         }
