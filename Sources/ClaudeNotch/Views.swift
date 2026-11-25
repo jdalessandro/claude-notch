@@ -460,7 +460,7 @@ struct UsageCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(
                     model.statusLineInstalled
-                        ? "Waiting for a Claude Code terminal session to report your limits. They arrive after each response there; the desktop app's Code tab doesn't send them."
+                        ? "No limits reported yet. They come from Claude Code in a terminal: run `claude` once and they'll appear here and be remembered. The desktop app's Code tab doesn't report them."
                         : "Percentages come from Claude Code's status line."
                 )
                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -64,7 +64,7 @@ public enum PlanDetector {
     }
 }
 
-public struct QuotaWindow: Sendable, Equatable, Identifiable {
+public struct QuotaWindow: Sendable, Equatable, Identifiable, Codable {
     /// Key in the status line's `rate_limits` object, e.g. `five_hour`, `seven_day`, `seven_day_opus`.
     public var id: String
     public var title: String
@@ -83,7 +83,7 @@ public struct QuotaWindow: Sendable, Equatable, Identifiable {
 
 /// Rate-limit windows as reported by Claude Code's status line (`rate_limits`), subscribers only.
 /// Windows are discovered by key, so per-model weekly limits appear without code changes.
-public struct QuotaState: Sendable, Equatable {
+public struct QuotaState: Sendable, Equatable, Codable {
     public var windows: [QuotaWindow]
     public var updatedAt: Date
 
@@ -99,6 +99,25 @@ public struct QuotaState: Sendable, Equatable {
         if var f = fiveHour { f.id = "five_hour"; f.title = Self.title(for: "five_hour"); w.append(f) }
         if var d = sevenDay { d.id = "seven_day"; d.title = Self.title(for: "seven_day"); w.append(d) }
         self.init(windows: w, updatedAt: updatedAt)
+    }
+
+    /// Limits only arrive when a terminal Claude Code session responds, so the last report is remembered across
+    /// app restarts (shown with its age) instead of being lost until the next terminal session.
+    public static var storeURL: URL { Paths.supportDir.appendingPathComponent("quota.json") }
+
+    public static func load(from url: URL = storeURL) -> QuotaState? {
+        guard let d = try? Data(contentsOf: url) else { return nil }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .secondsSince1970
+        return try? dec.decode(QuotaState.self, from: d)
+    }
+
+    public func save(to url: URL = storeURL) {
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .secondsSince1970
+        guard let d = try? enc.encode(self) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? d.write(to: url, options: .atomic)
     }
 
     /// The status line only reports on activity, so a window whose reset time has passed is stale: show it as

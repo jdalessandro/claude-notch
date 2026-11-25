@@ -51,4 +51,18 @@ import Testing
         #expect(PlanDetector.detect(env: [:], claudeJSON: cj, settings: s2) == .api)
         #expect(PlanDetector.detect(env: [:], claudeJSON: cj, settings: d.appendingPathComponent("missing.json")) == sub)
     }
+
+    @Test func lastReportedLimitsAreRememberedAcrossRestarts() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("q-\(UUID())/quota.json")
+        #expect(QuotaState.load(from: url) == nil)  // nothing saved yet
+        let q = QuotaState(
+            windows: [
+                QuotaWindow(id: "five_hour", usedPercent: 18, resetsAt: Date(timeIntervalSince1970: 1_795_600_000)),
+                QuotaWindow(id: "seven_day_fable", usedPercent: 3),
+            ], updatedAt: Date(timeIntervalSince1970: 1_795_500_000))
+        q.save(to: url)
+        #expect(QuotaState.load(from: url) == q)
+        try "not json".write(to: url, atomically: true, encoding: .utf8)
+        #expect(QuotaState.load(from: url) == nil)  // corrupt file: ignored, never crashes
+    }
 }
