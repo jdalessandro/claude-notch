@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-lint:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        # Serial: the socket tests block threads, and parallel suites starve the small CI runner's thread pool.
+        run: swift test --no-parallel
+
+      - name: Lint
+        run: swift format lint --strict -r Sources Tests Package.swift
+
+      - name: Bundle app
+        if: hashFiles('scripts/bundle.sh') != ''
+        run: ./scripts/bundle.sh
+
+      - name: Upload app
+        if: hashFiles('scripts/bundle.sh') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeNotch-app
+          path: dist/ClaudeNotch.app
