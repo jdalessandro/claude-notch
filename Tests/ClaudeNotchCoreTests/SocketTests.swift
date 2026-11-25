@@ -18,7 +18,9 @@ import Testing
             HookEnvelope(payload: HookPayload(sessionId: "x", hookEventName: "PermissionRequest"), expectsReply: true),
             replyTimeoutSec: 3, path: path)
         #expect(r == HookReply(decision: .deny, reason: "nope"))
-        try await Task.sleep(for: .milliseconds(100))
+        // Poll instead of sleeping a fixed time: delivery is asynchronous and CI runners are slow.
+        let deadline = Date().addingTimeInterval(3)
+        while got.value.count < 2 && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(got.value == ["Stop", "PermissionRequest"])
         // No server => silent nil, no crash.
         #expect(NotchClient.send(HookEnvelope(payload: HookPayload(sessionId: "x")), path: "/tmp/nonexistent.sock") == nil)
