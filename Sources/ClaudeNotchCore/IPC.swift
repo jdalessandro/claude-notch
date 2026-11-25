@@ -26,7 +26,10 @@ private func setNonBlocking(_ fd: Int32) {
 
 /// Reads until the first newline (or EOF), in large chunks, within one total deadline.
 /// Returns nil on timeout with no complete message, on error, or when the message exceeds `maxBytes`.
-func readMessage(fd: Int32, deadline: Date, maxBytes: Int = 8_000_000) -> Data? {
+func readMessage(
+    fd: Int32, deadline initialDeadline: Date, extendBy window: TimeInterval = 0, hardDeadline: Date? = nil, maxBytes: Int = 8_000_000
+) -> Data? {
+    var deadline = initialDeadline
     var out = Data()
     var buf = [UInt8](repeating: 0, count: 64 * 1024)
     while true {
@@ -43,6 +46,11 @@ func readMessage(fd: Int32, deadline: Date, maxBytes: Int = 8_000_000) -> Data? 
         }
         out.append(contentsOf: buf[0..<n])
         if out.count > maxBytes { return nil }
+        // A client making real progress (a sizeable chunk) earns more time, up to a hard cap; a trickle of tiny
+        // writes does not, so it can't hold up everything queued behind it.
+        if window > 0, n >= 16 * 1024, let hard = hardDeadline {
+            deadline = min(hard, max(deadline, Date().addingTimeInterval(window)))
+        }
     }
 }
 
@@ -194,6 +202,8 @@ public final class NotchServer: @unchecked Sendable {
     /// Total time a connection gets to deliver its message. A silent or trickling client costs at most this
     /// much before later events are released.
     static let readBudget: TimeInterval = 0.3
+    /// Upper bound for a message that keeps making progress (large but steady uploads).
+    static let readHardLimit: TimeInterval = 5
 
     private let path: String
     private let handler: Handler
@@ -266,8 +276,11 @@ public final class NotchServer: @unchecked Sendable {
     }
 
     private func serve(_ c: Int32, seq: Int) {
-        let deadline = Date().addingTimeInterval(Self.readBudget)
-        guard let line = readMessage(fd: c, deadline: deadline), let env = try? HookEnvelope.decode(line) else {
+        let start = Date()
+        let line = readMessage(
+            fd: c, deadline: start.addingTimeInterval(Self.readBudget), extendBy: Self.readBudget,
+            hardDeadline: start.addingTimeInterval(Self.readHardLimit))
+        guard let line, let env = try? HookEnvelope.decode(line) else {
             close(c)
             finish(seq: seq, nil)
             return
