@@ -232,6 +232,7 @@ public struct SessionStore: Sendable {
             default: break
             }
             sub.lastEventAt = now
+            if sub.status == .running { Self.wakeForSubagent(&s, now: now) }
             s.subagents[aid] = sub
             sessions[sid] = s
             return .none
@@ -250,6 +251,7 @@ public struct SessionStore: Sendable {
                 s.subagents[aid] = Subagent(
                     id: aid, type: p.agentType ?? "agent",
                     description: s.takeTaskDescription(), startedAt: now)
+                Self.wakeForSubagent(&s, now: now)
             }
 
         case "SubagentStop":
@@ -374,6 +376,15 @@ public struct SessionStore: Sendable {
         }
         sessions[sid] = s
         return effect
+    }
+
+    /// Subagent activity wakes a session the main turn already marked done: background subagents routinely outlive
+    /// (or start after) the main agent's `Stop`, and a session with running subagents is not idle.
+    static func wakeForSubagent(_ s: inout AgentSession, now: Date) {
+        guard s.status == .done else { return }  // ended, failed, or waiting on the user stay as they are
+        s.status = .working
+        s.unseen = false
+        if s.workingSince == nil { s.workingSince = now }
     }
 
     /// Marks the turn as complete: idle, unseen result waiting for review.

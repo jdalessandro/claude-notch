@@ -181,4 +181,80 @@ import Testing
         s.apply(ev("SessionEnd", t: 5))
         #expect(s.sessions["s1"]?.runningSubagents == 0 && s.sessions["s1"]?.status == .ended)
     }
+
+    @Test func subagentsThatStartAfterTheMainTurnStoppedWakeTheSession() {
+        var s = SessionStore()
+        s.apply(ev("UserPromptSubmit") { $0.prompt = "kick off background work" })
+        #expect(s.apply(ev("Stop", t: 2) { $0.lastAssistantMessage = "Started it." }) == .notify(sessionId: "s1", kind: .finished))
+        #expect(s.sessions["s1"]?.status == .done)
+        // The order seen with background tasks: the main turn is already over when the subagents begin.
+        s.apply(
+            ev("SubagentStart", t: 5) {
+                $0.agentId = "bg1"; $0.agentType = "general-purpose"
+            })
+        #expect(s.sessions["s1"]?.status == .working && s.sessions["s1"]?.runningSubagents == 1)  // not Idle
+        s.apply(
+            ev("SubagentStart", t: 6) {
+                $0.agentId = "bg2"; $0.agentType = "Explore"
+            })
+        s.apply(
+            ev("PreToolUse", t: 7) {
+                $0.agentId = "bg2"; $0.agentType = "Explore"; $0.toolName = "Grep"; $0.toolInput = .object(["pattern": .string("x")])
+            })
+        #expect(s.sessions["s1"]?.status == .working)
+        #expect(s.sessions["s1"]?.workingSince != nil && s.sessions["s1"]?.unseen == false)
+        // They finish: the session goes idle again and the result is flagged for review, once.
+        #expect(s.apply(ev("SubagentStop", t: 20) { $0.agentId = "bg1" }) == .none)
+        #expect(s.apply(ev("SubagentStop", t: 21) { $0.agentId = "bg2" }) == .notify(sessionId: "s1", kind: .finished))
+        #expect(s.sessions["s1"]?.status == .done && s.sessions["s1"]?.unseen == true)
+    }
+
+    @Test func aSubagentsFirstEventAloneIsEnoughToNoticeItWithoutSubagentStart() {
+        // Hooks installed before SubagentStart existed: the first event carrying agent_id must do the same job.
+        var s = SessionStore()
+        s.apply(ev("UserPromptSubmit") { $0.prompt = "x" })
+        s.apply(ev("Stop", t: 2))
+        s.apply(
+            ev("PreToolUse", t: 4) {
+                $0.agentId = "late"; $0.agentType = "Explore"; $0.toolName = "Read"
+            })
+        #expect(s.sessions["s1"]?.status == .working && s.sessions["s1"]?.runningSubagents == 1)
+    }
+
+    @Test func staleOrUnrelatedEventsDoNotWakeAnIdleSession() {
+        var s = SessionStore()
+        s.apply(
+            ev("SubagentStart") {
+                $0.agentId = "a1"; $0.agentType = "Explore"
+            })
+        s.apply(ev("SubagentStop", t: 2) { $0.agentId = "a1" })
+        s.apply(ev("UserPromptSubmit", t: 3) { $0.prompt = "x" }); s.apply(ev("Stop", t: 4))
+        s.apply(
+            ev("SubagentStart", t: 5) {
+                $0.agentId = "a2"; $0.agentType = "Explore"
+            })
+        s.apply(ev("SubagentStop", t: 6) { $0.agentId = "a2" })
+        #expect(s.sessions["s1"]?.status == .done)
+        // A straggler tool event from a subagent that already stopped must not revive anything.
+        s.apply(
+            ev("PostToolUse", t: 7) {
+                $0.agentId = "a2"; $0.agentType = "Explore"; $0.toolName = "Read"
+            })
+        #expect(s.sessions["s1"]?.status == .done)
+        // An ended or waiting session is never woken.
+        var e = SessionStore()
+        e.apply(ev("SessionEnd"));
+        e.apply(
+            ev("PreToolUse", t: 1) {
+                $0.agentId = "z"; $0.agentType = "Explore"; $0.toolName = "Read"
+            })
+        #expect(e.sessions["s1"]?.status == .ended)
+        var w = SessionStore()
+        w.apply(ev("PermissionRequest", expectsReply: true) { $0.toolName = "Bash" })
+        w.apply(
+            ev("PreToolUse", t: 1) {
+                $0.agentId = "z"; $0.agentType = "Explore"; $0.toolName = "Read"
+            })
+        #expect(w.sessions["s1"]?.status == .needsPermission)
+    }
 }
