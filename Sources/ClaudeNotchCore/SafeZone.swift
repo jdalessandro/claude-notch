@@ -6,8 +6,9 @@ import Foundation
 public enum SafeZone {
     /// Padding between the island's outer edge and the header content.
     public static let outerPadding = 20.0
-    /// Extra clearance kept on each side of the cutout so text never touches it.
-    public static let cutoutMargin = 10.0
+    /// Extra clearance on each side of the cutout. Small on purpose: the cutout width the app measures already
+    /// includes its own margin, so a large value here would waste room and force terse wording.
+    public static let cutoutMargin = 4.0
     /// Never report less than this, so a very narrow island degrades gracefully instead of collapsing.
     public static let minimumSide = 36.0
 
