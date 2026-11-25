@@ -856,11 +856,10 @@ struct FooterView: View {
             if model.hooksInstalled && model.hooksOutdated {
                 // Installed by an older version: missing events (e.g. SubagentStart) mean subagents are noticed late.
                 ChipButton(title: "Update hooks", tint: amber, filled: true) { model.installHooks() }
-            } else if model.hooksInstalled {
-                Label("Hooks active", systemImage: "checkmark.seal.fill").font(.system(size: 10.5)).foregroundStyle(.green.opacity(0.9))
-            } else {
+            } else if !model.hooksInstalled {
                 ChipButton(title: "Install hooks", tint: coral, filled: true) { model.installHooks() }
             }
+            // When hooks are installed and current there is nothing to say: no "all good" status line.
             if let e = model.lastError { Text(e).font(.system(size: 10)).foregroundStyle(.red).lineLimit(1) }
             Spacer()
             IslandMenu(model: model)
