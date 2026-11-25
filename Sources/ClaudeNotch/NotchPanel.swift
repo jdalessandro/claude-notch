@@ -108,6 +108,7 @@ final class NotchController {
         gate.enterDelay = Double(prefs.hoverDelay.milliseconds) / 1000
         let hovering = gate.update(inside: prefs.expandOnHover && overIsland, now: Date())
         if hovering != model.hovering { model.hovering = hovering }
+        model.reviewTick()
         // While collapsed, the transparent margins must not swallow clicks meant for the menu bar.
         let wantsEvents = model.expanded || overIsland
         if panel.ignoresMouseEvents == wantsEvents { panel.ignoresMouseEvents = !wantsEvents }

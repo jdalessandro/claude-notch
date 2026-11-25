@@ -87,6 +87,22 @@ final class AppModel {
         if expandedSubagents.contains(id) { expandedSubagents.remove(id) } else { expandedSubagents.insert(id) }
     }
 
+    private var reviewGate = ReviewGate()
+
+    /// Called often (from the pointer poll). A finished result counts as reviewed when the user deliberately views the
+    /// full result here: pointer over the island, detailed view, for a few seconds. The island opening by itself
+    /// (a notification) does not count, and neither does the compact view, which truncates the result.
+    func reviewTick(now: Date = Date()) {
+        var viewing: Set<String> = []
+        if prefs.autoMarkReviewed, expanded, hovering, effectiveMode == .detailed {
+            viewing = Set(store.active.filter { $0.needsReview }.map(\.id))
+        }
+        let reviewed = reviewGate.update(viewing: viewing, now: now)
+        guard !reviewed.isEmpty else { return }
+        for id in reviewed { store.markSeen(id) }
+        reconcile()
+    }
+
     func dismiss(_ id: String) { store.markSeen(id); reconcile() }
     func dismissAllReviewed() { store.markAllSeen(); reconcile() }
 
