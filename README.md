@@ -23,6 +23,8 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
+- **A subagent tree you can explore.** The header counts running subagents ("6 agents · 4 sub"). Each session lists its subagents running-first with a ├/└ tree; tap the **Subagents** header to open all of them with what each is doing right now, its tool-call count and its last result. A session whose main turn has ended but whose subagents still run stays **Working** ("Waiting on 2 subagents") and is only marked finished, with its notification, when the last one stops. A subagent silent for 15 minutes is treated as finished so nothing can stay stuck.
+- **Questions look like questions.** When Claude asks you something, the island shows the question and its choices with **Answer in Claude** / **Not now** (a single **Answer** button in the compact view) instead of a raw tool name with Allow/Deny.
 - **Approve from the island.** Tool-permission requests show the exact command with **Allow / Deny**. Requests from a
   subagent say so.
 - **Plan limits like Claude Desktop.** 5-hour, weekly, and per-model weekly limits as percentage bars with reset times
@@ -127,7 +129,7 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 ## Development
 
 ```bash
-make build test      # build and run the 94-test suite
+make build test      # build and run the 104-test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents

@@ -16,6 +16,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - `claude-notch-hook` forwarder with `--install`/`--uninstall`/`--statusline`, merging safely into
   `~/.claude/settings.json`.
 
+### Subagents and questions
+- Fixed sessions showing **Idle** while background subagents were still working: the main turn's `Stop` no longer
+  force-closes subagents, the session stays Working until the last one stops, and the "finished" notification waits.
+- Subagent tree: running-first ordering, per-session expand/collapse, current tool, tool-call counts, last result,
+  and a running-subagent count in the headers. Silent subagents are settled after 15 minutes.
+- Claude's questions (`AskUserQuestion`) render as questions with their choices and friendlier actions and notifications.
+
 ### Rendering
 - Claude's replies render inline markdown (bold, code, links) with block syntax flattened; subagent hand-backs, task
   notifications and system reminders no longer replace your real prompt; worktree and scratch-workspace sessions get

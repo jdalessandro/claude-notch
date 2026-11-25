@@ -85,6 +85,7 @@ func renderSnapshots(to dir: String) {
     shot("expanded-needs-you", height: 1200)
     // Resolve the request and let the subagent finish so the "review / working / idle" mix is visible.
     model.store.resolvePermission("web-dashboard", allowed: true)
+    model.expandedSubagents.insert("infra-tools")  // show the explorable subagent tree
     model.store.markSeen("web-dashboard")
     shot("expanded-mixed", height: 1200)
     model.pinned = false

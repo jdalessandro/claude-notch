@@ -19,7 +19,9 @@ extension AgentStatus {
 extension AgentSession {
     var activity: String {
         switch status {
-        case .working: currentToolDetail ?? "Thinking…"
+        case .working:
+            mainTurnEnded && runningSubagents > 0
+                ? "Waiting on \(runningSubagents) subagent\(runningSubagents == 1 ? "" : "s")" : (currentToolDetail ?? "Thinking…")
         case .compacting: "Compacting context…"
         case .needsPermission: "Needs your approval"
         case .needsInput: "Waiting for you"
@@ -269,6 +271,9 @@ struct ExpandedView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkle").foregroundStyle(coral)
                     Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
+                    if model.runningSubagentTotal > 0 {
+                        Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
 
                 }
                 .padding(.leading, 20)
@@ -555,7 +560,7 @@ struct SessionCard: View {
             if !compact {
                 if model.prefs.showPrompt, let prompt = s.lastPrompt { LabeledText(label: "You", text: prompt, lines: 2) }
                 if s.status == .working || s.status == .compacting { activityLine }
-                if model.prefs.showSubagents, !s.subagents.isEmpty { SubagentList(session: s) }
+                if model.prefs.showSubagents, !s.subagents.isEmpty { SubagentList(model: model, session: s) }
                 request
                 if model.prefs.showContextMeter { meta }
             }
@@ -585,7 +590,9 @@ struct SessionCard: View {
                         TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(w))).monospacedDigit()
                         }
                     } else {
-                        Text(s.lastTurnDuration.map(Fmt.duration) ?? Fmt.label(s.status))
+                        Text(
+                            s.lastTurnDuration.map(Fmt.duration) ?? (s.pending?.isQuestion == true ? "Has a question" : Fmt.label(s.status))
+                        )
                     }
                 }
                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
@@ -670,18 +677,56 @@ struct LabeledText: View {
     }
 }
 
+/// The session's subagents as a small tree: running ones first, with what each is doing right now.
+/// Collapsed it shows the three most relevant; tap the header to explore all of them with their details.
 struct SubagentList: View {
+    let model: AppModel
     let session: AgentSession
+    private var expanded: Bool { model.expandedSubagents.contains(session.id) }
+
     var body: some View {
-        let subs = session.orderedSubagents
-        let shown = Array(subs.suffix(4))
+        let subs = session.rankedSubagents
+        let shown = expanded ? subs : Array(subs.prefix(3))
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
-                Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .semibold))
-                Text("SUBAGENTS").font(.system(size: 9, weight: .bold)).tracking(0.5)
-                Text(session.runningSubagents > 0 ? "\(session.runningSubagents) running" : "all done").font(.system(size: 9.5))
-            }.foregroundStyle(.secondary)
-            ForEach(shown) { sub in
+            Button {
+                model.toggleSubagents(session.id)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").font(.system(size: 7.5, weight: .bold))
+                    Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .semibold))
+                    Text("SUBAGENTS").font(.system(size: 9, weight: .bold)).tracking(0.5)
+                    Text(session.runningSubagents > 0 ? "\(session.runningSubagents) running" : "all done").font(.system(size: 9.5))
+                    Spacer(minLength: 4)
+                    if subs.count > 3 {
+                        Text(expanded ? "Show less" : "Show all \(subs.count)").font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                    }
+                }
+                .foregroundStyle(.secondary).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            ForEach(Array(shown.enumerated()), id: \.element.id) { i, sub in
+                SubagentRow(sub: sub, isLast: i == shown.count - 1, detailed: expanded)
+            }
+        }
+        .padding(.leading, 4)
+    }
+}
+
+struct SubagentRow: View {
+    let sub: Subagent
+    let isLast: Bool
+    let detailed: Bool
+
+    private var detail: String {
+        if sub.status == .running { return sub.currentDetail ?? sub.description ?? "working…" }
+        return sub.lastMessage.map(Fmt.plainText) ?? sub.description ?? "done"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            // Tree branch glyph: ├ for siblings, └ for the last child.
+            Text(isLast ? "└" : "├").font(.system(size: 11, design: .monospaced)).foregroundStyle(Color.white.opacity(0.25)).frame(
+                width: 10)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Group {
                         if sub.status == .running {
@@ -691,7 +736,13 @@ struct SubagentList: View {
                         }
                     }.frame(width: 6, height: 6)
                     Text(sub.type).font(.system(size: 11, weight: .semibold)).lineLimit(1).fixedSize()
-                    Text(detail(sub)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    if detailed {
+                        if let d = sub.description {
+                            Text(d).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    } else {
+                        Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    }
                     Spacer(minLength: 4)
                     if sub.status == .running {
                         TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(sub.startedAt))) }
@@ -700,17 +751,15 @@ struct SubagentList: View {
                     }
                 }
                 .font(.system(size: 10.5)).monospacedDigit()
-                .frame(height: 15)
+                if detailed {
+                    Text(detail)
+                        .font(.system(size: 11, design: sub.status == .running ? .monospaced : .default))
+                        .foregroundStyle(sub.status == .running ? coral.opacity(0.95) : Color.secondary)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text("\(sub.toolCalls) tool call\(sub.toolCalls == 1 ? "" : "s")").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
             }
-            if subs.count > shown.count { Text("+\(subs.count - shown.count) earlier").font(.system(size: 10)).foregroundStyle(.tertiary) }
         }
-        .padding(.leading, 9)
-        .overlay(alignment: .leading) { Capsule().fill(Color.white.opacity(0.14)).frame(width: 2) }
-    }
-
-    private func detail(_ sub: Subagent) -> String {
-        if sub.status == .running { return sub.currentDetail ?? sub.description ?? "working…" }
-        return sub.lastMessage.map { $0.replacingOccurrences(of: "\n", with: " ") } ?? sub.description ?? "done"
     }
 }
 
@@ -850,6 +899,9 @@ struct CompactView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkle").foregroundStyle(coral)
                     Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
+                    if model.runningSubagentTotal > 0 {
+                        Text("· \(model.runningSubagentTotal) sub").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.leading, 20)
                 Spacer(minLength: geometry.notchWidth)
@@ -915,7 +967,7 @@ struct CompactRow: View {
         switch s.status {
         case .needsInput, .failed: return s.attentionMessage ?? Fmt.label(s.status)
         case .working, .compacting:
-            let sub = s.runningSubagents > 0 ? " · \(s.runningSubagents) sub" : ""
+            let sub = (s.runningSubagents > 0 && !s.mainTurnEnded) ? " · \(s.runningSubagents) sub" : ""
             return s.activity + sub
         case .done: return s.needsReview ? (s.lastMessage.map(Fmt.plainText) ?? "Done") : "Idle"
         default: return Fmt.label(s.status)
