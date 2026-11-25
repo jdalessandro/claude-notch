@@ -16,6 +16,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - `claude-notch-hook` forwarder with `--install`/`--uninstall`/`--statusline`, merging safely into
   `~/.claude/settings.json`.
 
+### Rendering
+- Claude's replies render inline markdown (bold, code, links) with block syntax flattened; subagent hand-backs, task
+  notifications and system reminders no longer replace your real prompt; worktree and scratch-workspace sessions get
+  readable names; a detached `HEAD` is not shown as a branch.
+- Narrower island (320 / 350 / 420 pt presets, 320 pt compact view); clicking a compact row opens it in the detailed view.
+- The last reported plan limits are remembered across restarts.
+
 ### Reliability
 - Per-field lenient hook payload decoding (the status line's object-valued `model` no longer drops the event).
 - Hook forwarder deadlines and payload truncation; ordered, deadline-bounded IPC; safe reply-handle lifecycle.

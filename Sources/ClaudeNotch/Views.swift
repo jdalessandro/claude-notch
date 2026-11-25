@@ -579,7 +579,7 @@ struct SessionCard: View {
                 Text(s.displayTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 4) {
                     // The name already is the project when there is no title; don't repeat it.
-                    Text(([s.title == nil ? nil : s.projectName, s.gitBranch].compactMap { $0 }).joined(separator: " · "))
+                    Text(([s.title == nil ? nil : s.projectName, s.displayBranch].compactMap { $0 }).joined(separator: " · "))
                     Text("·").foregroundStyle(.tertiary)
                     if let w = s.workingSince {
                         TimelineView(.periodic(from: .now, by: 1)) { c in Text(Fmt.duration(c.date.timeIntervalSince(w))).monospacedDigit()
@@ -648,6 +648,12 @@ struct SessionCard: View {
 }
 
 struct LabeledText: View {
+    /// Claude's replies are markdown: render bold/code/links instead of showing the raw `**`.
+    static func rendered(_ raw: String) -> AttributedString {
+        let flat = Fmt.inlineMarkdown(raw)
+        return (try? AttributedString(markdown: flat, options: .init(interpretedSyntax: .inlineOnly))) ?? AttributedString(flat)
+    }
+
     let label: String
     let text: String
     var lines = 2
@@ -657,7 +663,7 @@ struct LabeledText: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label.uppercased()).font(.system(size: 9, weight: .bold)).tracking(0.5)
                 .foregroundStyle(tint == .secondary ? Color.white.opacity(0.35) : tint).frame(width: 50, alignment: .leading)
-            Text(text.replacingOccurrences(of: "\n", with: " "))
+            Text(Self.rendered(text))
                 .font(.system(size: 12)).foregroundStyle(bright ? Color.white.opacity(0.92) : Color.secondary)
                 .lineLimit(lines).multilineTextAlignment(.leading)
         }
@@ -846,7 +852,7 @@ struct CompactRow: View {
         case .working, .compacting:
             let sub = s.runningSubagents > 0 ? " · \(s.runningSubagents) sub" : ""
             return s.activity + sub
-        case .done: return s.needsReview ? (s.lastMessage ?? "Done") : "Idle"
+        case .done: return s.needsReview ? (s.lastMessage.map(Fmt.plainText) ?? "Done") : "Idle"
         default: return Fmt.label(s.status)
         }
     }

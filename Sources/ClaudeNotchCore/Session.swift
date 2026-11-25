@@ -111,7 +111,19 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
 
     public var costUSD: Double { reportedCostUSD ?? estimatedCostUSD }
     public var contextFraction: Double { min(1, Double(contextTokens) / Double(max(1, contextWindow))) }
-    public var projectName: String { (cwd as NSString).lastPathComponent }
+    /// A readable name for where the session runs: the repository for a Claude worktree, a friendly label for the
+    /// app's scratch workspaces, otherwise the folder name.
+    public var projectName: String {
+        let parts = (cwd as NSString).pathComponents
+        if let i = parts.firstIndex(of: ".claude"), i > 0, i + 1 < parts.count, parts[i + 1] == "worktrees" { return parts[i - 1] }
+        if parts.contains("scratch-workspaces") { return "Scratch workspace" }
+        return (cwd as NSString).lastPathComponent
+    }
+    /// The git branch, or nil when it carries no information (empty, or a detached "HEAD").
+    public var displayBranch: String? {
+        guard let b = gitBranch, !b.isEmpty, b != "HEAD" else { return nil }
+        return b
+    }
     /// The session's name: Claude's generated/custom title, else the project folder. The prompt is shown separately.
     public var displayTitle: String { title ?? projectName }
 }
@@ -208,7 +220,7 @@ public struct SessionStore: Sendable {
             s.subagents = [:]; s.taskQueue = []
             s.status = .working; s.workingSince = now; s.unseen = false
             s.pending = nil; s.attentionMessage = nil
-            if let pr = p.prompt, !pr.isEmpty { s.lastPrompt = pr }
+            if let pr = p.prompt, !pr.isEmpty, !Fmt.isSyntheticPrompt(pr) { s.lastPrompt = pr }
 
         case "PreToolUse":
             if s.workingSince == nil { s.workingSince = now }

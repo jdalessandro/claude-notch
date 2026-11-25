@@ -35,4 +35,49 @@ public enum Fmt {
         case .ended: "Ended"
         }
     }
+
+    // MARK: text from Claude
+
+    /// Flattens a markdown reply into one line of *inline* markdown (bold, code, links survive for rendering):
+    /// fences, heading/quote/list markers and blank lines are dropped, since the island shows a few lines.
+    public static func inlineMarkdown(_ s: String) -> String {
+        var out: [String] = []
+        var inFence = false
+        for raw in s.split(separator: "\n", omittingEmptySubsequences: false) {
+            var line = String(raw)
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                inFence.toggle()
+                continue
+            }
+            if inFence { continue }  // code inside a fence is not prose
+            line = line.replacingOccurrences(of: #"^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)"#, with: "", options: .regularExpression)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { out.append(trimmed) }
+        }
+        return out.joined(separator: " ")
+    }
+
+    /// Like `inlineMarkdown` but with the inline marks removed too, for places that can't render them.
+    public static func plainText(_ s: String) -> String {
+        var t = inlineMarkdown(s)
+        t = t.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        for mark in ["**", "__", "~~", "`"] { t = t.replacingOccurrences(of: mark, with: "") }
+        return t
+    }
+
+    /// Text Claude Code delivers as a "prompt" that the user never typed: subagent hand-backs, task
+    /// notifications, system reminders, interrupts. These must not replace the user's real prompt.
+    public static func isSyntheticPrompt(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix("[Request interrupted") || t.hasPrefix("Caveat:") { return true }
+        guard t.hasPrefix("<"),
+            let r = t.range(of: #"^<([a-z][a-z0-9_-]*)"#, options: .regularExpression)
+        else { return false }
+        let tag = String(t[r]).dropFirst()
+        let known: Set<String> = [
+            "agent-message", "task-notification", "system-reminder", "command-name", "command-message", "command-args",
+            "local-command-stdout", "local-command-stderr", "ci-monitor-event", "side-sessions-event", "user-prompt-submit-hook",
+        ]
+        return known.contains(String(tag))
+    }
 }

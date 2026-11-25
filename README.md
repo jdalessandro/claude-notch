@@ -18,7 +18,8 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 
 - **Always-visible status.** The collapsed island shows a Claude tile (coral = working, amber = needs you, green = done,
   with a count badge) and a live waveform that moves while an agent works.
-- **Two expanded views, and it remembers your choice.** Hover (or click) to open the **Detailed** view, grouped into **Needs you**, **Ready to review**, **Working** and **Idle**, or the **Compact** view: one line per session with Allow/Deny inline and a mini plan-limit readout. Flip between them from the island header; the last one you used is restored every time, even after a relaunch.
+- **Two expanded views, and it remembers your choice.** Hover (or click) to open the **Detailed** view, grouped into **Needs you**, **Ready to review**, **Working** and **Idle**, or the **Compact** view: one line per session with Allow/Deny inline and a mini plan-limit readout. Flip between them from the island header; the last one you used is restored every time, even after a relaunch. Clicking a session in the compact view jumps to it in the detailed view (until the island closes, so your saved choice is untouched).
+- **Narrow by design.** The island is 320 pt (compact) to 350 pt (detailed) wide by default, in the proportions of the system media island; widths are adjustable in Settings.
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
@@ -85,7 +86,7 @@ CLI sessions. They don't report which terminal they run in, so clicking one open
 Percentages for the 5-hour and weekly limits come from Claude Code's status line. Turn them on with
 *Settings ▸ Integration ▸ Enable quota gauges* (or the **Enable** button in the Usage card). This registers
 `claude-notch-hook --statusline` as your status line **only if you don't already have one**; an existing status line is never replaced.
-Until the first response after enabling, the card says it is waiting for your limits (use the **Tokens** toggle meanwhile).
+The last report is saved (`quota.json` in Application Support) and shown with an "Updated … ago" pill, so the bars stay populated between terminal sessions and across app restarts. Until a terminal session has reported at least once, the card says so (use the **Tokens** toggle meanwhile).
 
 > **Terminal sessions only.** The status line is a terminal feature, so limits arrive when a Claude Code *terminal*
 > session responds. Sessions that run only in the Claude desktop app's Code tab may never report them; if you never see
@@ -119,14 +120,14 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 |---|---|
 | Nothing appears | Is the app running (menu-bar sparkle)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Island flickers or won't open | Increase *Hover delay*, or turn off *Expand on hover* and click to open. |
-| No quota percentages | Enable quota gauges. They only exist for Pro/Max, and only after the next response. If you already use a custom status line, Claude Notch leaves it alone. |
+| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Claude Notch leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
 | Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
 
 ## Development
 
 ```bash
-make build test      # build and run the 88-test suite
+make build test      # build and run the 94-test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents
@@ -154,6 +155,8 @@ file permissions, refuses to touch unexpected JSON shapes, skips no-op writes, a
 
 ## Limitations
 
+- Plan-limit percentages need a terminal Claude Code session to report them (see above); desktop-only use shows the last remembered values.
+- The status line reports the 5-hour and weekly windows; per-model weekly rows (like Claude Desktop's "Weekly · Fable") appear only if Claude Code includes them.
 - Context-window size is inferred (200k, or 1M if observed larger) unless the status line is enabled.
 - The `Notification` payload field names come from documentation excerpts; the state machine also falls back to the message text.
 - Clicking a session activates the terminal/app but cannot focus a specific tab.
