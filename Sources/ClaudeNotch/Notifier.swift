@@ -14,6 +14,8 @@ enum Notifier {
     static func post(kind: SessionStore.NotifyKind, session s: AgentSession, sound: Bool, banner: Bool, details: Bool) {
         let (title, body): (String, String) =
             switch kind {
+            case .permission where s.pending?.isQuestion == true:
+                ("Claude has a question · \(s.projectName)", s.pending?.summary ?? "Claude is asking you something")
             case .permission:
                 ("Approval needed · \(s.projectName)", s.pending?.summary ?? s.attentionMessage ?? "Claude is asking for permission")
             case .input: ("Waiting for you · \(s.projectName)", s.attentionMessage ?? "Claude is waiting for your input")
@@ -24,7 +26,7 @@ enum Notifier {
         guard banner, available else { return }
         let generic: String =
             switch kind {
-            case .permission: "Claude is asking for permission"
+            case .permission: s.pending?.isQuestion == true ? "Claude is asking you a question" : "Claude is asking for permission"
             case .input: "Claude is waiting for your input"
             case .finished: "The turn finished"
             case .failed: "Claude hit an error"

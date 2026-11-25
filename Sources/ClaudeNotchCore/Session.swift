@@ -39,6 +39,34 @@ public struct Subagent: Sendable, Identifiable, Equatable {
     public var label: String { description ?? type }
 }
 
+/// A question Claude asked the user (the `AskUserQuestion` tool), parsed out of the request so it can be shown
+/// as a question with its choices instead of as a tool name.
+public struct AskedQuestion: Sendable, Equatable {
+    public var header: String?
+    public var text: String
+    public var options: [String]
+    public var multiSelect: Bool
+    /// How many questions the tool call contains (the first is shown).
+    public var total: Int
+
+    public static let toolName = "AskUserQuestion"
+
+    public static func parse(_ input: JSONValue?) -> AskedQuestion? {
+        guard case .array(let qs)? = input?["questions"], let first = qs.first, let text = first["question"]?.stringValue,
+            !text.isEmpty
+        else { return nil }
+        var options: [String] = []
+        if case .array(let opts)? = first["options"] {
+            for o in opts {
+                if let label = o["label"]?.stringValue ?? o.stringValue, !label.isEmpty { options.append(label) }
+            }
+        }
+        var multi = false
+        if case .bool(let b)? = first["multiSelect"] { multi = b }
+        return AskedQuestion(header: first["header"]?.stringValue, text: text, options: options, multiSelect: multi, total: qs.count)
+    }
+}
+
 public struct PendingPermission: Sendable, Equatable, Identifiable {
     public let id: UUID
     public var toolName: String
@@ -51,6 +79,9 @@ public struct PendingPermission: Sendable, Equatable, Identifiable {
     /// True when a hook process is blocked waiting for our answer (we can approve from the notch).
     public var canAnswer: Bool
     public var since: Date
+    /// Set when this "permission" is really Claude asking the user a question.
+    public var question: AskedQuestion?
+    public var isQuestion: Bool { question != nil || toolName == AskedQuestion.toolName }
 
     /// Whether `event` means this request has been settled elsewhere (answered in the terminal, tool ran,
     /// turn ended). Deliberately narrow: unrelated events such as the `Notification` that Claude Code fires
@@ -250,11 +281,12 @@ public struct SessionStore: Sendable {
         case "PermissionRequest":
             let alreadyAnnounced = s.status == .needsPermission && (s.pending == nil || s.pending?.toolUseId == p.toolUseId)
             s.status = .needsPermission; s.unseen = true
+            let asked = p.toolName == AskedQuestion.toolName ? AskedQuestion.parse(p.toolInput) : nil
             s.pending = PendingPermission(
                 id: UUID(), toolName: p.toolName ?? "tool",
-                summary: Self.summarize(tool: p.toolName, input: p.toolInput) ?? (p.toolName ?? "tool"),
+                summary: asked?.text ?? Self.summarize(tool: p.toolName, input: p.toolInput) ?? (p.toolName ?? "tool"),
                 message: p.message, agentType: p.agentId == nil ? nil : p.agentType, agentId: p.agentId,
-                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now)
+                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now, question: asked)
             s.attentionMessage = p.message
             if !alreadyAnnounced { effect = .notify(sessionId: sid, kind: .permission) }
 

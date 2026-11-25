@@ -714,12 +714,76 @@ struct SubagentList: View {
     }
 }
 
+/// The choices of a question as read-only pills that wrap onto as many lines as they need.
+struct FlowChips: View {
+    let items: [String]
+    var more = 0
+    var multi = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 5) {
+                    ForEach(row, id: \.self) { Text($0).font(.system(size: 11)).lineLimit(1).chip() }
+                }
+            }
+            if more > 0 { Text("+\(more) more").font(.system(size: 10.5)).foregroundStyle(.secondary) }
+            if multi { Text("Pick any").font(.system(size: 10)).foregroundStyle(.tertiary) }
+        }
+    }
+    /// Greedy packing by approximate text width so pills wrap without a custom Layout.
+    private var rows: [[String]] {
+        var out: [[String]] = [[]]
+        var width = 0
+        for it in items {
+            let w = it.count * 7 + 22
+            if width + w > 250, !out[out.count - 1].isEmpty { out.append([]); width = 0 }
+            out[out.count - 1].append(it)
+            width += w + 5
+        }
+        return out
+    }
+}
+
+private extension View {
+    func chip() -> some View {
+        padding(.horizontal, 9).padding(.vertical, 3)
+            .background(Color.white.opacity(0.10), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+    }
+}
+
 struct PermissionBar: View {
     let model: AppModel
     let session: AgentSession
     let pending: PendingPermission
 
     var body: some View {
+        if pending.isQuestion { questionBody } else { permissionBody }
+    }
+
+    /// Claude asking the user something: show the question and its choices, not a tool name.
+    private var questionBody: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label(pending.question?.header.map { "Claude asks · \($0)" } ?? "Claude has a question", systemImage: "bubble.left.fill")
+                .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(amber)
+            Text(pending.summary).font(.system(size: 13, weight: .medium)).lineLimit(4).fixedSize(horizontal: false, vertical: true)
+            if let opts = pending.question?.options, !opts.isEmpty {
+                // Read-only: the answer is given in Claude itself.
+                FlowChips(items: Array(opts.prefix(6)), more: max(0, opts.count - 6), multi: pending.question?.multiSelect == true)
+            }
+            if let total = pending.question?.total, total > 1 {
+                Text("+\(total - 1) more question\(total == 2 ? "" : "s")").font(.system(size: 10.5)).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                ChipButton(title: "Answer in Claude", tint: amber, filled: true) {
+                    pending.canAnswer ? model.answerQuestion(session) : model.open(session)
+                }
+                if pending.canAnswer { ChipButton(title: "Not now", tint: .gray) { model.answer(session.id, .deny) } }
+            }
+        }
+    }
+
+    private var permissionBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let a = pending.agentType {
                 Text("Subagent \(a) wants to run").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(amber)
@@ -846,6 +910,7 @@ struct CompactRow: View {
     private var s: AgentSession { session }
 
     private var subline: String {
+        if let p = s.pending, p.isQuestion { return "Claude asks: " + p.summary }
         if let p = s.pending { return (p.agentType == nil ? "" : "↳ ") + p.summary }  // ↳ marks a subagent's request
         switch s.status {
         case .needsInput, .failed: return s.attentionMessage ?? Fmt.label(s.status)
@@ -868,7 +933,7 @@ struct CompactRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.displayTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 Text(subline.replacingOccurrences(of: "\n", with: " "))
-                    .font(.system(size: 11, design: s.pending != nil ? .monospaced : .default))
+                    .font(.system(size: 11, design: (s.pending != nil && s.pending?.isQuestion != true) ? .monospaced : .default))
                     .foregroundStyle(s.status.needsAttention ? amber : Color.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
@@ -886,7 +951,9 @@ struct CompactRow: View {
     }
 
     @ViewBuilder private var trailing: some View {
-        if let p = s.pending {
+        if let p = s.pending, p.isQuestion {
+            ChipButton(title: "Answer", tint: amber, filled: true) { p.canAnswer ? model.answerQuestion(s) : model.open(s) }
+        } else if let p = s.pending {
             if p.canAnswer {
                 HStack(spacing: 6) {
                     ChipButton(title: "Allow", tint: .green, filled: true) { model.answer(s.id, .allow) }
