@@ -90,7 +90,7 @@ public enum NotchClient {
     /// app must cost at most this long.
     public static let sendBudget: TimeInterval = 1.0
     /// Cap for a large message that keeps being accepted; tiny payloads never get near it.
-    public static let sendHardLimit: TimeInterval = 5.0
+    public static let sendHardLimit: TimeInterval = 20.0
 
     /// Sends one envelope. Returns the app's reply when `env.expectsReply`, else nil.
     /// Never throws and never blocks longer than `sendBudget` (plus `replyTimeoutSec` when a reply is awaited).
@@ -215,7 +215,7 @@ public final class NotchServer: @unchecked Sendable {
     /// much before later events are released.
     static let readBudget: TimeInterval = 0.3
     /// Upper bound for a message that keeps making progress (large but steady uploads).
-    static let readHardLimit: TimeInterval = 5
+    static let readHardLimit: TimeInterval = 20
 
     private let path: String
     private let handler: Handler

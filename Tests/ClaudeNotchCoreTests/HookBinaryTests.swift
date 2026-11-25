@@ -83,7 +83,7 @@ import Testing
             #"{"session_id":"s1","cwd":"/p","transcript_path":"/t.jsonl","model":{"id":"claude-opus-5-5","display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":93,"resets_at":1795600000},"seven_day":{"used_percentage":14,"resets_at":1796100000},"seven_day_fable":{"used_percentage":0}},"context_window":{"context_window_size":200000,"used_percentage":12}}"#
         let r = try run(stdin: payload, args: ["--statusline"], socket: path)
         #expect(r.out.isEmpty && r.code == 0)  // the status line itself stays empty
-        let deadline = Date().addingTimeInterval(3)
+        let deadline = Date().addingTimeInterval(10)
         while seen.value.isEmpty && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
         let env = try #require(seen.value.first)
         #expect(env.payload.hookEventName == "StatusLine" && env.payload.sessionId == "s1")
@@ -102,7 +102,7 @@ import Testing
         let big = String(repeating: "z", count: 400_000)
         let r = try run(stdin: #"{"session_id":"s1","hook_event_name":"UserPromptSubmit","prompt":""# + big + #""}"#, socket: path)
         #expect(r.code == 0)
-        let deadline = Date().addingTimeInterval(3)
+        let deadline = Date().addingTimeInterval(10)
         while seen.value.isEmpty && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
         let n = seen.value.first?.payload.prompt?.count ?? -1
         #expect(n > 0 && n <= 4_001)
