@@ -7,7 +7,7 @@ public enum CompactLayout {
     public static let maxRows = 6
     public static let overflowHeight: CGFloat = 22
     public static let emptyHeight: CGFloat = 56
-    public static let width: CGFloat = 380
+    public static let width: CGFloat = 320
 
     /// Height of the list area for `count` sessions (rows beyond `maxRows` collapse into one overflow line).
     public static func listHeight(sessionCount count: Int) -> CGFloat {

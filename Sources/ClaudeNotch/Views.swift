@@ -269,7 +269,7 @@ struct ExpandedView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkle").foregroundStyle(coral)
                     Text("\(sessions.count) agent\(sessions.count == 1 ? "" : "s")").font(.system(size: 12, weight: .semibold))
-                    if running > 0 { Text("· \(running) sub").font(.system(size: 11)).foregroundStyle(.secondary) }
+
                 }
                 .padding(.leading, 20)
                 Spacer(minLength: geometry.notchWidth)

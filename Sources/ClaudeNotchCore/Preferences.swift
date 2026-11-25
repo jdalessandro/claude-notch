@@ -9,9 +9,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         case compact, regular, wide
         public var points: Double {
             switch self {
-            case .compact: 380;
-            case .regular: 440;
-            case .wide: 520
+            case .compact: 320
+            case .regular: 350
+            case .wide: 420
             }
         }
     }
