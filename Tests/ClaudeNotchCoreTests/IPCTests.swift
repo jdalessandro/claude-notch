@@ -105,6 +105,32 @@ private func wait(timeout: TimeInterval = 10, _ cond: () -> Bool) -> TimeInterva
         #expect(wait(timeout: 30) { got.value == 5_000_000 } != nil)  // above the old 4 MB cap
     }
 
+    @Test func steadySmallChunksAreNotDroppedByTheReadBudget() throws {
+        // A socket hands over only a few KB per read. A client that streams steadily in small chunks for longer than
+        // the base read budget must still be delivered (the budget extends on cumulative progress, not per read).
+        let path = tmpSocket()
+        let got = Box<Int>(0)
+        let server = NotchServer(path: path) { env, _ in got.mutate { $0 = env.payload.prompt?.count ?? 0 } }
+        try server.start()
+        defer { server.stop() }
+        var p = HookPayload(sessionId: "s", hookEventName: "UserPromptSubmit")
+        p.prompt = String(repeating: "z", count: 600_000)
+        let line = try HookEnvelope(payload: p).encodedLine()
+        let fd = rawConnect(path)
+        defer { close(fd) }
+        let t0 = Date()
+        var offset = 0
+        while offset < line.count {  // 4 KB every 3 ms: well past the 0.3 s base budget in total
+            let end = min(offset + 4096, line.count)
+            let chunk = line[offset..<end]
+            _ = chunk.withUnsafeBytes { write(fd, $0.baseAddress, chunk.count) }
+            offset = end
+            Thread.sleep(forTimeInterval: 0.003)
+        }
+        #expect(Date().timeIntervalSince(t0) > NotchServer.readBudget)  // the scenario really exceeded the base budget
+        #expect(wait(timeout: 15) { got.value == 600_000 } != nil)
+    }
+
     @Test func eventsAreDeliveredInSendOrder() throws {
         let path = tmpSocket()
         let got = Box<[Int]>([])

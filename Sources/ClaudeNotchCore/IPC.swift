@@ -3,6 +3,9 @@ import Foundation
 
 // MARK: - Low-level helpers (all bounded by deadlines: nothing here may block forever)
 
+/// Bytes that must move since the last extension for a connection to earn more time.
+let progressStep = 4096
+
 func makeAddr(_ path: String) -> (sockaddr_un, socklen_t)? {
     var addr = sockaddr_un()
     addr.sun_family = sa_family_t(AF_UNIX)
@@ -30,6 +33,7 @@ func readMessage(
     fd: Int32, deadline initialDeadline: Date, extendBy window: TimeInterval = 0, hardDeadline: Date? = nil, maxBytes: Int = 8_000_000
 ) -> Data? {
     var deadline = initialDeadline
+    var sinceExtension = 0
     var out = Data()
     var buf = [UInt8](repeating: 0, count: 64 * 1024)
     while true {
@@ -46,10 +50,13 @@ func readMessage(
         }
         out.append(contentsOf: buf[0..<n])
         if out.count > maxBytes { return nil }
-        // A client making real progress (a sizeable chunk) earns more time, up to a hard cap; a trickle of tiny
-        // writes does not, so it can't hold up everything queued behind it.
-        if window > 0, n >= 16 * 1024, let hard = hardDeadline {
+        // A client making real progress earns more time, up to a hard cap. Progress is cumulative (4 KB since the
+        // last extension): a socket hands over only ~8 KB per read, so a per-read threshold would never fire.
+        // A trickle of tiny writes never reaches it, so it can't hold up everything queued behind it.
+        sinceExtension += n
+        if window > 0, sinceExtension >= progressStep, let hard = hardDeadline {
             deadline = min(hard, max(deadline, Date().addingTimeInterval(window)))
+            sinceExtension = 0
         }
     }
 }
@@ -58,6 +65,7 @@ func readMessage(
 func writeAll(fd: Int32, _ data: Data, deadline initialDeadline: Date, extendBy window: TimeInterval = 0, hardDeadline: Date? = nil) -> Bool
 {
     var sent = 0
+    var sinceExtension = 0
     var deadline = initialDeadline
     return data.withUnsafeBytes { (p: UnsafeRawBufferPointer) -> Bool in
         guard let base = p.baseAddress else { return true }
@@ -66,8 +74,10 @@ func writeAll(fd: Int32, _ data: Data, deadline initialDeadline: Date, extendBy 
             if n > 0 {
                 sent += n
                 // A peer that keeps draining earns more time (up to a hard cap); a stuck one does not.
-                if window > 0, n >= 16 * 1024, let hard = hardDeadline {
+                sinceExtension += n
+                if window > 0, sinceExtension >= progressStep, let hard = hardDeadline {
                     deadline = min(hard, max(deadline, Date().addingTimeInterval(window)))
+                    sinceExtension = 0
                 }
                 continue
             }
