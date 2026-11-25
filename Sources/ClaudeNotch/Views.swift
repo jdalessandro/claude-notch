@@ -594,6 +594,14 @@ struct SessionCard: View {
                 } else {
                     Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 11.5, weight: .semibold))
                 }
+                // This session's own subagents (the header carries the global count).
+                if !compact, let summary = s.subagentSummary {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: 8.5, weight: .semibold))
+                        Text(summary).font(.system(size: 10))
+                    }
+                    .foregroundStyle(s.runningSubagents > 0 ? coral.opacity(0.95) : Color.green.opacity(0.85))
+                }
             }.monospacedDigit()
         }
     }
@@ -1026,8 +1034,7 @@ struct CompactRow: View {
         switch s.status {
         case .needsInput, .failed: return s.attentionMessage ?? Fmt.label(s.status)
         case .working, .compacting:
-            let sub = (s.runningSubagents > 0 && !s.mainTurnEnded) ? " · \(s.runningSubagents) sub" : ""
-            return s.activity + sub
+            return s.activity
         case .done: return s.needsReview ? (s.lastMessage.map(Fmt.plainText) ?? "Done") : "Idle"
         default: return Fmt.label(s.status)
         }
@@ -1088,6 +1095,13 @@ struct CompactRow: View {
                     Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                 }
                 HStack(spacing: 4) {
+                    if let _ = s.subagentSummary {
+                        HStack(spacing: 2) {
+                            Image(systemName: "arrow.triangle.branch").font(.system(size: 8, weight: .semibold))
+                            Text("\(s.subagentBadgeCount)").font(.system(size: 9.5, weight: .semibold))
+                        }
+                        .foregroundStyle(s.runningSubagents > 0 ? coral.opacity(0.95) : Color.green.opacity(0.85))
+                    }
                     ContextBar(fraction: s.contextFraction).frame(width: 28, height: 3)
                     Text("\(Int(s.contextFraction * 100))%").font(.system(size: 9.5)).foregroundStyle(.tertiary).monospacedDigit()
                 }

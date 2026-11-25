@@ -139,6 +139,17 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
         let done = all.filter { $0.status == .done }.sorted { ($0.endedAt ?? $0.startedAt) > ($1.endedAt ?? $1.startedAt) }
         return running + done
     }
+    /// Per-session subagent stat: "2 running · 1 done", "2 running", "3 done", or nil when there are none.
+    public var subagentSummary: String? {
+        let total = subagents.count
+        guard total > 0 else { return nil }
+        let running = runningSubagents
+        let done = total - running
+        if running > 0 { return done > 0 ? "\(running) running · \(done) done" : "\(running) running" }
+        return "\(done) done"
+    }
+    /// The number to show next to the branch glyph in tight spaces: what is running, else how many finished.
+    public var subagentBadgeCount: Int { runningSubagents > 0 ? runningSubagents : subagents.count }
     public var runningSubagents: Int { subagents.values.filter { $0.status == .running }.count }
     mutating func takeTaskDescription() -> String? { taskQueue.isEmpty ? nil : taskQueue.removeFirst() }
     // Usage (from transcript)
