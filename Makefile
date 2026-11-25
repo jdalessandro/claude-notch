@@ -6,8 +6,8 @@ help: ## List targets
 build: ## Debug build
 	swift build
 
-test: build ## Run the test suite (hook-binary tests need the executables built first)
-	swift test
+test: build ## Run the test suite serially (socket tests block threads; hook-binary tests need executables built first)
+	swift test --no-parallel
 
 lint: ## Check formatting/style (fails on any finding)
 	swift format lint --strict -r Sources Tests Package.swift

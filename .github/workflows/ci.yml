@@ -27,7 +27,8 @@ jobs:
         run: swift build
 
       - name: Test
-        run: swift test
+        # Serial: the socket tests block threads, and parallel suites starve the small CI runner's thread pool.
+        run: swift test --no-parallel
 
       - name: Lint
         run: swift format lint --strict -r Sources Tests Package.swift
