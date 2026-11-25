@@ -9,6 +9,9 @@ private func tmpSocket() -> String { "/tmp/cn-ipc-\(getpid())-\(Int.random(in: 0
 /// A plain blocking client connection, so tests can misbehave in ways the real client never would.
 private func rawConnect(_ path: String) -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    // Writing to a peer that already closed must fail with EPIPE, not kill the test process with SIGPIPE.
+    var one: Int32 = 1
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
     guard let (addr, len) = makeAddr(path) else { return -1 }
     var a = addr
     _ = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, len) } }

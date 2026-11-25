@@ -55,13 +55,22 @@ func readMessage(
 }
 
 /// Writes everything within a total deadline; false if the peer is not draining or has gone.
-func writeAll(fd: Int32, _ data: Data, deadline: Date) -> Bool {
+func writeAll(fd: Int32, _ data: Data, deadline initialDeadline: Date, extendBy window: TimeInterval = 0, hardDeadline: Date? = nil) -> Bool
+{
     var sent = 0
+    var deadline = initialDeadline
     return data.withUnsafeBytes { (p: UnsafeRawBufferPointer) -> Bool in
         guard let base = p.baseAddress else { return true }
         while sent < data.count {
             let n = write(fd, base + sent, data.count - sent)
-            if n > 0 { sent += n; continue }
+            if n > 0 {
+                sent += n
+                // A peer that keeps draining earns more time (up to a hard cap); a stuck one does not.
+                if window > 0, n >= 16 * 1024, let hard = hardDeadline {
+                    deadline = min(hard, max(deadline, Date().addingTimeInterval(window)))
+                }
+                continue
+            }
             if n < 0, errno == EINTR { continue }
             if n < 0, errno == EAGAIN {
                 var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
@@ -80,6 +89,8 @@ public enum NotchClient {
     /// Budget for connect + write. The hook runs inside the user's Claude session, so a wedged or absent
     /// app must cost at most this long.
     public static let sendBudget: TimeInterval = 1.0
+    /// Cap for a large message that keeps being accepted; tiny payloads never get near it.
+    public static let sendHardLimit: TimeInterval = 5.0
 
     /// Sends one envelope. Returns the app's reply when `env.expectsReply`, else nil.
     /// Never throws and never blocks longer than `sendBudget` (plus `replyTimeoutSec` when a reply is awaited).
@@ -106,7 +117,8 @@ public enum NotchClient {
             getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &elen)
             guard err == 0 else { return nil }
         }
-        guard writeAll(fd: fd, line, deadline: deadline) else { return nil }
+        guard writeAll(fd: fd, line, deadline: deadline, extendBy: sendBudget, hardDeadline: Date().addingTimeInterval(sendHardLimit))
+        else { return nil }
         guard env.expectsReply else { return nil }
 
         let replyDeadline = Date().addingTimeInterval(max(replyTimeoutSec, 0))
