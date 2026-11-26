@@ -17,18 +17,17 @@ struct ClaudeNotchActivity: Widget {
         } dynamicIsland: { ctx in
             let s = ctx.state
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) { Artwork(size: 52).padding(.leading, 6).padding(.top, 4) }
-                DynamicIslandExpandedRegion(.center) { IslandTitle(state: s).padding(.leading, 4).padding(.top, 4) }
-                DynamicIslandExpandedRegion(.trailing) { AgentWave(state: s, height: 20).padding(.trailing, 8).padding(.top, 4) }
+                // The leading / trailing regions sit up beside the cutout, detached from the content, and the compact
+                // island already shows the logo and waveform; so the expanded view is one column under the cutout.
                 DynamicIslandExpandedRegion(.bottom) {
-                    IslandBody(state: s).padding(.horizontal, 2).opacity(ctx.isStale ? 0.6 : 1)
+                    IslandExpanded(state: s).padding(.horizontal, 2).opacity(ctx.isStale ? 0.6 : 1)
                 }
             } compactLeading: {
                 IslandCompactLeading(state: s)
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: 22)
+                Artwork(size: 17)
             }
             .keylineTint(Island.coral)
         }

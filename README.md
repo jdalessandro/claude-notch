@@ -1,6 +1,7 @@
 # Claude Notch
 
 **A Dynamic-Island-style companion for [Claude Code](https://claude.com/claude-code) on MacBooks with a display cutout.**
+An independent project, not affiliated with or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
 See every running agent at a glance, get told when something finishes or needs you, approve tool permissions
 without switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
@@ -183,4 +184,12 @@ signed and notarized releases · launch at login.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The license covers this project's code only.
+
+## Trademarks and affiliation
+
+Claude Notch is an independent, community project. It is **not affiliated with, endorsed by, or sponsored by Anthropic**.
+"Claude" and "Claude Code" are trademarks of Anthropic, PBC, and are used here only to say what this app works with.
+
+This repository does not include Anthropic's logos, the Claude mark, or other Anthropic brand assets, and contributions
+must not add them. The island's icons and artwork are original to this project.

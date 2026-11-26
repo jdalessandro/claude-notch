@@ -40,23 +40,18 @@ extension NotchActivityState.Kind {
     var needsYou: Bool { self == .approval || self == .question || self == .input || self == .failed }
 }
 
-extension NotchActivityState {
-    /// Bold first line of the island, like a track title.
-    var title: String {
-        switch phase {
-        case .idle: "Claude Code"
-        default: headline
+extension NotchActivityState.Row {
+    /// The status badge's words.
+    var status: String {
+        switch kind {
+        case .approval: fromSubagent ? "Subagent asks" : "Needs approval"
+        case .question: "Question"
+        case .input: "Waiting for you"
+        case .failed: "Failed"
+        case .review: "Ready to review"
+        case .working: "Working"
+        case .idle: "Idle"
         }
-    }
-    /// Grey second line, like the artist: how many agents and subagents are running.
-    var subtitle: String {
-        guard sessions > 0 else { return "No active sessions" }
-        var parts: [String] = []
-        // "2 working" over "2 agents" says the same thing twice: only count agents when the title doesn't.
-        if !(phase == .working && working == sessions) { parts.append(sessions == 1 ? "1 agent" : "\(sessions) agents") }
-        if phase == .needsYou, working > 0 { parts.append("\(working) working") }
-        if subagentsRunning > 0 { parts.append(subagentsRunning == 1 ? "1 subagent" : "\(subagentsRunning) subagents") }
-        return parts.isEmpty ? "All agents busy" : parts.joined(separator: " · ")
     }
 }
 
@@ -111,17 +106,26 @@ struct Artwork: View {
 
 // MARK: - Waveform
 
-/// One bar per running agent: full bars for sessions that are working, thinner dimmer bars for their subagents.
-/// Each bar breathes at its own speed so the group moves like a waveform. Rests as dots when nothing runs.
+/// One bar per running agent: full-width bars for working sessions, slightly thinner ones for their subagents.
+/// Rests as dots when nothing runs.
+///
+/// The system draws a Live Activity from a snapshot of this view, so repeating animations (symbol effects,
+/// `TimelineView`) never run. Instead the app sends a `pulse` beat about once a second while agents run; each beat
+/// picks new bar heights and the island animates the change, which reads as a moving waveform.
 struct AgentWave: View {
     let agents: Int
     let subagents: Int
     let tint: Color
+    var pulse = 0
     var height: CGFloat = 18
     static let maxBars = 7
 
-    private static let heights: [CGFloat] = [0.55, 0.95, 0.7, 1.0, 0.6, 0.85, 0.5]
-    private static let speeds: [Double] = [1.0, 1.45, 0.8, 1.25, 0.95, 1.6, 1.1]
+    /// Bar `i`'s height (0.3...1) at beat `pulse`: deterministic, different per bar, never two beats alike.
+    static func level(_ i: Int, _ pulse: Int) -> CGFloat {
+        let t = Double(pulse)
+        let v = sin(t * 1.9 + Double(i) * 2.4) * 0.5 + sin(t * 0.7 + Double(i) * 1.3) * 0.5
+        return CGFloat(0.3 + 0.7 * abs(v))
+    }
 
     var body: some View {
         let main = min(agents, Self.maxBars)
@@ -137,13 +141,16 @@ struct AgentWave: View {
             HStack(alignment: .center, spacing: height * 0.14) {
                 ForEach(0..<(main + subs), id: \.self) { i in
                     let isSub = i >= main
-                    Image(systemName: "capsule.portrait.fill").resizable()
-                        .frame(width: height * (isSub ? 0.12 : 0.17), height: height * Self.heights[i] * (isSub ? 0.75 : 1))
-                        .foregroundStyle(tint.opacity(isSub ? 0.55 : 1))
-                        .symbolEffect(.breathe.plain.byLayer, options: .repeating.speed(Self.speeds[i]))
+                    // Fixed-size bar scaled vertically: the layout never changes between beats, so the system's
+                    // snapshot can't catch the bars collapsed or missing mid-animation.
+                    Capsule().fill(tint)
+                        .frame(width: height * (isSub ? 0.12 : 0.17), height: height * (isSub ? 0.75 : 1))
+                        .scaleEffect(y: Self.level(i, pulse))
                 }
             }
             .frame(height: height)
+            .animation(.easeInOut(duration: 0.9), value: pulse)
+            .contentTransition(.identity)
         }
     }
 }
@@ -153,7 +160,8 @@ extension AgentWave {
     /// per waiting session keeps the island visibly asking.
     init(state: NotchActivityState, height: CGFloat = 18) {
         let agents = state.working > 0 ? state.working : (state.phase == .needsYou ? state.needsYou : 0)
-        self.init(agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, height: height)
+        self.init(
+            agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, pulse: state.pulse, height: height)
     }
 }
 
@@ -176,80 +184,154 @@ struct Pill: View {
     }
 }
 
+// MARK: - Badges
+
+/// A small capsule label. `tinted` uses the colour for text on a faint wash of it; neutral is grey on grey.
+struct Badge<Label: View>: View {
+    var tint: Color? = nil
+    var icon: String? = nil
+    @ViewBuilder var label: Label
+    var body: some View {
+        HStack(spacing: 3) {
+            if let icon { Image(systemName: icon).font(.system(size: 9, weight: .bold)) }
+            label
+        }
+        .font(.system(size: 11, weight: .semibold)).monospacedDigit().lineLimit(1)
+        .foregroundStyle(tint ?? Color.white.opacity(0.7))
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
+        .fixedSize()
+    }
+}
+
+extension Badge where Label == Text {
+    init(_ text: String, tint: Color? = nil, icon: String? = nil) {
+        self.init(tint: tint, icon: icon) { Text(text) }
+    }
+}
+
+/// A labelled stat pill: an optional glyph, the value in bright type and what it measures in dim type, so the island
+/// explains itself without hover (Live Activities get no pointer events).
+struct Stat<Glyph: View, Value: View>: View {
+    var label: String
+    var tint: Color? = nil
+    @ViewBuilder var glyph: Glyph
+    @ViewBuilder var value: Value
+    var body: some View {
+        HStack(spacing: 4) {
+            glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
+            value.font(.system(size: 11, weight: .semibold)).foregroundStyle(tint ?? Color.white.opacity(0.9))
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.white.opacity(0.45))
+        }
+        .monospacedDigit().lineLimit(1)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+        .fixedSize()
+    }
+}
+
+extension Stat where Value == Text {
+    init(value: String, label: String, tint: Color? = nil, @ViewBuilder glyph: () -> Glyph) {
+        self.init(label: label, tint: tint, glyph: glyph) { Text(value) }
+    }
+}
+
+extension Stat where Glyph == EmptyView {
+    init(label: String, tint: Color? = nil, @ViewBuilder value: () -> Value) {
+        self.init(label: label, tint: tint, glyph: { EmptyView() }, value: value)
+    }
+}
+
+/// A tiny progress ring, used for context-window fill.
+struct Ring: View {
+    let fraction: Double
+    let tint: Color
+    var size: CGFloat = 10
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.18), lineWidth: 2)
+            Circle().trim(from: 0, to: max(0.04, min(1, fraction))).stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 // MARK: - The featured request
 
+/// The most urgent request: who asks and what kind, the question with its choices or the command, and the answer
+/// buttons. Kept tight: the expanded island has a fixed maximum height and clips anything taller.
 struct PromptPanel: View {
     let p: NotchActivityState.Prompt
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text(p.session).font(.system(size: 13, weight: .semibold)).foregroundStyle(Island.secondary).lineLimit(1)
+                Text(p.session).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
                 Spacer(minLength: 6)
-                Label(label, systemImage: p.isQuestion ? "bubble.left.fill" : "lock.open.fill").labelStyle(.titleAndIcon)
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Island.amber).lineLimit(1)
+                if p.isQuestion {
+                    if let h = p.header { Badge(h) }
+                    Badge("Question", tint: Island.amber, icon: "questionmark.bubble.fill")
+                } else {
+                    Badge(p.tool, icon: "terminal.fill")
+                    Badge(p.subagent == nil ? "Needs approval" : "Subagent asks", tint: Island.amber, icon: "lock.fill")
+                }
             }
             if p.isQuestion { question } else { permission }
             actions
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
-    }
-
-    private var label: String {
-        if p.isQuestion { return p.header ?? "Question" }
-        return p.subagent.map { "\(p.tool) · \($0)" } ?? p.tool
+        .background(
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.amber.opacity(0.10)))
     }
 
     private var question: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(p.text).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(3)
+        VStack(alignment: .leading, spacing: 7) {
+            Text(p.text).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             if !p.options.isEmpty {
                 // Read-only: the answer is given in Claude itself.
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(p.options, id: \.self) { o in
-                        Text(o).font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
-                            .padding(.horizontal, 11).padding(.vertical, 5)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        Text(o).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
                     }
-                    if p.moreOptions > 0 {
-                        Text("+\(p.moreOptions)").font(.system(size: 12, weight: .medium)).foregroundStyle(Island.secondary)
-                    }
+                    if p.moreOptions > 0 { Badge("+\(p.moreOptions)") }
+                    Spacer(minLength: 0)
+                    if p.multiSelect { Badge("Choose any") }
+                    if p.moreQuestions > 0 { Badge("+\(p.moreQuestions) more") }
                 }
-            }
-            let notes = [
-                p.multiSelect ? "Pick any" : nil,
-                p.moreQuestions > 0 ? "+\(p.moreQuestions) more question\(p.moreQuestions == 1 ? "" : "s")" : nil,
-            ].compactMap { $0 }
-            if !notes.isEmpty {
-                Text(notes.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Island.tertiary)
             }
         }
     }
 
     private var permission: some View {
-        Text(p.text).font(.system(size: 13, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.92))
-            .lineLimit(3).padding(.horizontal, 12).padding(.vertical, 10)
+        Text(p.text).font(.system(size: 12.5, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.92))
+            .lineLimit(2).padding(.horizontal, 10).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.black.opacity(0.5)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
-                Button(intent: OpenSessionIntent(sessionId: p.sessionId)) { Pill(title: "Open", tint: Island.coral, filled: true) }
+                Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
+                    Pill(title: "Open", tint: Island.coral, filled: true, height: 30)
+                }
                 Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").font(.system(size: 12))
                     .foregroundStyle(Island.secondary).frame(maxWidth: .infinity)
             } else if p.isQuestion {
-                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Not now") }
+                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Not now", height: 30) }
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true)
+                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 30)
                 }
             } else {
-                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Deny", tint: Island.red) }
+                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                    Pill(title: "Deny", tint: Island.red, height: 30)
+                }
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Allow", tint: Island.green, filled: true)
+                    Pill(title: "Allow", tint: Island.green, filled: true, height: 30)
                 }
             }
         }
@@ -257,49 +339,101 @@ struct PromptPanel: View {
     }
 }
 
-// MARK: - Session rows
+// MARK: - Session cards
 
-/// One session per line: status dot, name over what it is doing, then its action or its timer and stats.
+/// One session in two lines: name, branch and status; then what it is doing, with its actions or stats beside it.
 struct SessionRow: View {
     let row: NotchActivityState.Row
     var body: some View {
-        HStack(spacing: 11) {
-            Circle().fill(row.kind.tint).frame(width: 9, height: 9)
-                .shadow(color: row.kind.tint.opacity(row.kind.needsYou ? 0.8 : 0), radius: 4)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-                Text(row.detail)
-                    .font(.system(size: 13, design: row.kind == .approval ? .monospaced : .default))
-                    .foregroundStyle(row.kind.needsYou ? Island.amber : Island.secondary).lineLimit(1)
+        // Live Activities don't deliver taps to a button hidden behind other content, so the tappable regions are the
+        // visible header and detail text themselves; the actions on the right keep their own buttons.
+        VStack(alignment: .leading, spacing: 5) {
+            Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                HStack(spacing: 6) {
+                    Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                        .layoutPriority(1)
+                    if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
+                    Spacer(minLength: 6)
+                    status
+                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 8)
-            trailing
+            .buttonStyle(.plain)
+            HStack(spacing: 5) {
+                Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                    Text(row.detail)
+                        .font(.system(size: 12.5, design: row.kind == .approval ? .monospaced : .default))
+                        .foregroundStyle(row.kind.needsYou ? Color.white.opacity(0.85) : Island.secondary)
+                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                trailing
+            }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface))
     }
 
+    @ViewBuilder private var status: some View {
+        if row.kind == .working, let since = row.since {
+            Badge(tint: Island.coral) {
+                Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36)
+            }
+        } else {
+            Badge(row.status, tint: row.kind == .idle ? nil : row.kind.tint)
+        }
+    }
+
+    /// Actions for a session waiting on you; otherwise its stats as badges.
     @ViewBuilder private var trailing: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             switch row.kind {
             case .approval:
                 if let r = row.requestId {
                     Button(intent: DenyIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Deny", tint: Island.red, height: 28, stretch: false)
+                        Pill(title: "Deny", tint: Island.red, height: 24, stretch: false)
                     }
                     Button(intent: AllowIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Allow", tint: Island.green, filled: true, height: 28, stretch: false)
+                        Pill(title: "Allow", tint: Island.green, filled: true, height: 24, stretch: false)
                     }
                 } else {
                     openButton
                 }
             case .question:
                 Button(intent: OpenSessionIntent(sessionId: row.id, requestId: row.requestId ?? "")) {
-                    Pill(title: "Answer", tint: Island.coral, filled: true, height: 28, stretch: false)
+                    Pill(title: "Answer", tint: Island.coral, filled: true, height: 24, stretch: false)
                 }
             case .input, .failed: openButton
             case .review:
-                Button(intent: MarkReviewedIntent(sessionId: row.id)) { Pill(title: "Reviewed", height: 28, stretch: false) }
-            case .working, .idle: stats
+                EmptyView()
+            case .working, .idle:
+                if row.subagentTotal > 0 {
+                    let running = row.subagents > 0
+                    Stat(
+                        value: "\(running ? row.subagents : row.subagentTotal)",
+                        label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
+                        tint: running ? Island.coral : nil
+                    ) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 9, weight: .bold))
+                    }
+                }
+                if row.linesAdded + row.linesRemoved > 0 {
+                    Stat(label: "lines") {
+                        Text("+\(row.linesAdded)").foregroundStyle(Island.green)
+                            + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
+                    }
+                }
+                // Neutral until the window is filling up (amber > 65 %, red > 85 %).
+                if let ctx = row.context {
+                    let full = ctx > 0.65
+                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil) {
+                        Ring(fraction: ctx, tint: full ? Island.context(ctx) : Color.white.opacity(0.8))
+                    }
+                }
             }
         }
         .buttonStyle(.plain)
@@ -308,127 +442,192 @@ struct SessionRow: View {
 
     private var openButton: some View {
         Button(intent: OpenSessionIntent(sessionId: row.id)) {
-            Pill(title: "Open", tint: Island.coral, filled: true, height: 28, stretch: false)
-        }
-    }
-
-    /// Elapsed time (tokens when idle) over the subagent count and context used.
-    private var stats: some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            if let since = row.since {
-                Text(since, style: .timer).font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.8))
-                    .monospacedDigit().multilineTextAlignment(.trailing).frame(width: 56, alignment: .trailing)
-            } else {
-                Text("\(Fmt.tokens(row.tokens)) tok").font(.system(size: 13, weight: .medium)).foregroundStyle(Island.secondary)
-                    .monospacedDigit()
-            }
-            HStack(spacing: 5) {
-                if row.subagentTotal > 0 {
-                    HStack(spacing: 2) {
-                        Image(systemName: "arrow.triangle.branch").font(.system(size: 9, weight: .bold))
-                        Text("\(row.subagents > 0 ? row.subagents : row.subagentTotal)")
-                    }
-                    .foregroundStyle(row.subagents > 0 ? Island.coral : Island.green)
-                }
-                Text("\(Int(row.context * 100))% ctx").foregroundStyle(Island.context(row.context).opacity(0.9))
-            }
-            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+            Pill(title: "Open", tint: Island.coral, filled: true, height: 24, stretch: false)
         }
     }
 }
 
 // MARK: - Footer
 
-/// Plan limits as two slim bars, like the media island's scrubber, and how many sessions are not shown.
-struct LimitsFooter: View {
+/// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
+/// page.
+struct Footer: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if state.more > 0 {
-                Text("+\(state.more) more session\(state.more == 1 ? "" : "s")").font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Island.tertiary).padding(.horizontal, 4)
-            }
-            if state.fiveHour != nil || state.weekly != nil {
-                HStack(spacing: 14) {
-                    if let f = state.fiveHour { limit("5h", f) }
-                    if let w = state.weekly { limit("7d", w) }
-                }
-                .padding(.horizontal, 4)
-            }
+        HStack(spacing: 10) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset) }
+            Spacer(minLength: 0)
+            if state.pages > 1 { Pager(state: state) }
         }
+        .padding(.horizontal, 4)
     }
 
-    private func limit(_ label: String, _ f: Double) -> some View {
-        HStack(spacing: 7) {
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.18)).frame(height: 6)
+    private func limit(_ label: String, _ f: Double, _ reset: Date?) -> some View {
+        HStack(spacing: 4) {
+            Text(label).foregroundStyle(Island.secondary)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: 26, height: 5)
                 .overlay(alignment: .leading) {
-                    GeometryReader { g in
-                        Capsule().fill(Island.quota(f)).frame(width: max(6, g.size.width * min(1, f)))
-                    }
+                    Capsule().fill(Island.quota(f)).frame(width: max(5, 26 * min(1, f)), height: 5)
                 }
-            Text("\(Int((f * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                .monospacedDigit()
+            Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
+            // No reset time means no window is running (nothing used since the last reset).
+            Text(reset.map { Island.resetLabel($0) } ?? "fresh").foregroundStyle(Island.tertiary)
         }
+        .monospacedDigit()
+        .font(.system(size: 11, weight: .semibold))
+        .fixedSize()
+    }
+}
+
+extension Island {
+    /// When a limit resets, as short as it reads: "6 PM" or "6:30 PM" today / within a day, "Tue 5 AM" beyond.
+    static func resetLabel(_ date: Date, now: Date = .now) -> String {
+        let f = DateFormatter()
+        let minute = Calendar.current.component(.minute, from: date)
+        let clock = minute == 0 ? "h a" : "h:mm a"
+        f.dateFormat = date.timeIntervalSince(now) < 20 * 3600 ? clock : "EEE " + clock
+        return f.string(from: date)
+    }
+}
+
+// MARK: - Pager
+
+/// ‹ dots ›: pages through the sessions, since a Live Activity can't scroll. Each tap asks the app for the next page
+/// (wrapping around); the app also turns pages by itself while nobody is tapping.
+struct Pager: View {
+    let state: NotchActivityState
+    var body: some View {
+        HStack(spacing: 7) {
+            Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
+            HStack(spacing: 4) {
+                ForEach(0..<min(state.pages, 8), id: \.self) { i in
+                    Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
+                        .frame(width: i == state.page ? 12 : 5, height: 5)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: state.page)
+            Button(intent: PageIntent(forward: true)) { arrow("chevron.right") }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    private func arrow(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.85))
+            .frame(width: 24, height: 24).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
     }
 }
 
 // MARK: - Regions
 
-/// Title and subtitle (the expanded center region).
+/// The header: how many agents, then badges for what needs you, what is working and how many subagents run.
 struct IslandTitle: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(state.title).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-            Text(state.subtitle).font(.system(size: 14)).foregroundStyle(Island.secondary).lineLimit(1)
+        HStack(spacing: 6) {
+            Text(state.sessions == 0 ? "No active sessions" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+            Spacer(minLength: 6)
+            if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
+            if state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
+            if state.subagentsRunning > 0 {
+                Badge(
+                    "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
+                    icon: "point.3.connected.trianglepath.dotted")
+            }
+        }
+    }
+}
+
+/// Everything under the header.
+struct IslandBody: View {
+    let state: NotchActivityState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let p = state.prompt { PromptPanel(p: p) }
+            ForEach(state.rows) { SessionRow(row: $0) }
+            Footer(state: state).padding(.top, 2)
+        }
+    }
+}
+
+/// The expanded content: the idle view when no session is active, otherwise the header and the sessions.
+/// Used by the island's bottom region, the banner presentation and snapshots.
+struct IslandExpanded: View {
+    let state: NotchActivityState
+    var body: some View {
+        if state.sessions == 0 {
+            IslandIdle(state: state)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                IslandTitle(state: state).padding(.horizontal, 4)
+                IslandBody(state: state)
+            }
+        }
+    }
+}
+
+// MARK: - Idle
+
+/// Nothing running: the logo with a short status, and the plan limits (the one thing worth checking now) with when
+/// each resets.
+struct IslandIdle: View {
+    let state: NotchActivityState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Artwork(size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("All quiet").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+                }
+                .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            if state.fiveHour != nil || state.weekly != nil {
+                HStack(alignment: .top, spacing: 16) {
+                    if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset) }
+                    if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Island.surface))
+            }
+        }
+    }
+
+    private func meter(_ label: String, _ f: Double, _ reset: Date?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Island.secondary)
+                Spacer(minLength: 4)
+                Text("\(Int((f * 100).rounded()))%").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .monospacedDigit()
+            }
+            Capsule().fill(Color.white.opacity(0.16)).frame(height: 6)
+                .overlay(alignment: .leading) {
+                    GeometryReader { g in
+                        Capsule().fill(Island.quota(f)).frame(width: max(6, g.size.width * min(1, f)))
+                    }
+                }
+            Group {
+                if let reset, reset > .now {
+                    Text("Resets \(Island.resetLabel(reset)) · in ") + Text(reset, style: .relative)
+                } else {
+                    Text(f == 0 ? "Not used yet" : "Reset time unknown")
+                }
+            }
+            .font(.system(size: 11)).foregroundStyle(Island.tertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Everything under the title row (the expanded bottom region).
-struct IslandBody: View {
-    let state: NotchActivityState
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let p = state.prompt { PromptPanel(p: p) }
-            if !state.rows.isEmpty {
-                VStack(alignment: .leading, spacing: 12) { ForEach(state.rows) { SessionRow(row: $0) } }
-            }
-            LimitsFooter(state: state)
-        }
-        .padding(.top, 4)
-    }
-}
-
-/// The whole expanded layout in one view: used for the banner presentation and for snapshots.
-struct IslandExpanded: View {
-    let state: NotchActivityState
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                Artwork(size: 52)
-                IslandTitle(state: state)
-                AgentWave(state: state, height: 20)
-            }
-            IslandBody(state: state)
-        }
-    }
-}
-
-/// The compact presentation: artwork on the left of the cutout, waveform on the right.
+/// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View {
-        HStack(spacing: 5) {
-            Artwork(size: 22)
-            if state.needsYou > 0 {
-                Text("\(state.needsYou)").font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(Island.amber)
-                    .monospacedDigit()
-            }
-        }
-    }
+    var body: some View { Artwork(size: 17) }
 }
 
 struct IslandCompactTrailing: View {

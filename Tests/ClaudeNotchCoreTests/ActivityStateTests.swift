@@ -15,6 +15,13 @@ import Testing
         #expect(st.phase == .idle && st.rows.isEmpty && st.prompt == nil)
     }
 
+    @Test func idleStateKeepsLimitsAndResets() {
+        let reset = Date().addingTimeInterval(3_600)
+        let quota = QuotaState(fiveHour: QuotaWindow(usedPercent: 40, resetsAt: reset), sevenDay: QuotaWindow(usedPercent: 17))
+        let st = NotchActivityState.make(sessions: [], quota: quota)
+        #expect(st.fiveHour == 0.4 && st.fiveHourReset == reset && st.weekly == 0.17 && st.weeklyReset == nil)
+    }
+
     @Test func workingSessionsSummarize() {
         let s = store {
             _ = $0.apply(ev("UserPromptSubmit", sid: "a") { $0.prompt = "go" })
@@ -96,8 +103,24 @@ import Testing
         }
         let quota = QuotaState(fiveHour: QuotaWindow(usedPercent: 82), sevenDay: QuotaWindow(usedPercent: 12))
         let st = NotchActivityState.make(sessions: s.active, quota: quota)
-        #expect(st.rows.count == NotchActivityState.maxRows && st.more == 3)
+        #expect(st.rows.count == NotchActivityState.maxRows && st.more == 6 - NotchActivityState.maxRows)
+        #expect(st.pages == 2 && st.page == 0)  // 6 sessions, 3 per page
         #expect(st.fiveHour == 0.82 && st.weekly == 0.12)
+    }
+
+    @Test func pagesShowEverySessionOnceAndWrap() {
+        let s = store { st in
+            for i in 0..<5 { _ = st.apply(ev("UserPromptSubmit", sid: "s\(i)") { $0.prompt = "go" }) }
+        }
+        let first = NotchActivityState.make(sessions: s.active, quota: nil)
+        let n = first.pages
+        #expect(n == (5 + NotchActivityState.maxRows - 1) / NotchActivityState.maxRows)
+        let pages = (0..<n).map { NotchActivityState.make(sessions: s.active, quota: nil, page: $0) }
+        #expect(pages.map(\.page) == Array(0..<n))
+        let ids = pages.flatMap { $0.rows.map(\.id) }
+        #expect(ids.count == 5 && Set(ids).count == 5, "every session on exactly one page")
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, page: n).page == 0)
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, page: -1).page == n - 1)
     }
 
     @Test func stateStaysWithinTheByteBudgetEvenWithHugeText() {
