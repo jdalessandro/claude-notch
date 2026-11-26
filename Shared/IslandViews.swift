@@ -449,14 +449,21 @@ struct SessionRow: View {
 
 // MARK: - Footer
 
-/// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
-/// page.
+/// One line: the two plan limits as short meters with when each resets, a refresh icon, and the pager when there is
+/// more than one page.
 struct Footer: View {
     let state: NotchActivityState
     var body: some View {
         HStack(spacing: 10) {
             if let f = state.fiveHour { limit("5h", f, state.fiveHourReset) }
             if let w = state.weekly { limit("7d", w, state.weeklyReset) }
+            if state.fiveHour != nil || state.weekly != nil {
+                Button(intent: RefreshQuotaIntent()) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.7)).frame(width: 22, height: 22).contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
             Spacer(minLength: 0)
             if state.pages > 1 { Pager(state: state) }
         }

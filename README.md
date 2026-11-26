@@ -39,7 +39,9 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
   on API billing the cost is shown.
 - **Notifications** (sound and system banners) for approval needed, waiting for input, finished, and failed, each toggleable.
 - **Click anywhere on a session** to jump to the app it runs in. A single [settings window](#settings) controls the rest.
-- **Private and local.** No network code. See [SECURITY.md](SECURITY.md).
+- **Private and local, with one exception.** Everything stays on your Mac except one request: on Pro/Max, the app asks
+  Anthropic for your plan-limit percentages (the same request Claude Code's `/usage` makes), using Claude Code's own login.
+  See [SECURITY.md](SECURITY.md).
 
 ## Requirements
 

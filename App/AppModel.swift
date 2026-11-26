@@ -132,7 +132,9 @@ final class AppModel {
             Task { @MainActor in await self?.tick() }
         }
         Notifier.requestAuthorization()
-        Task { await refreshUsage() }
+        Task {
+            await refreshUsage(); await refreshQuota()
+        }
     }
 
     private func refreshUsage() async {
@@ -140,7 +142,31 @@ final class AppModel {
         usage = u
         if b != billing { billing = b }
     }
-    func refreshUsageNow() { Task { await refreshUsage() } }
+    func refreshUsageNow() {
+        Task {
+            await refreshUsage(); await refreshQuota()
+        }
+    }
+
+    /// Real plan-limit numbers from the usage API (see `UsageAPI`). Failures keep the last-known quota.
+    var quotaRefreshing = false
+    var quotaError: String?
+    private var quotaFetchedAt = Date.distantPast
+    func refreshQuota() async {
+        guard !quotaRefreshing, case .subscription = billing else { return }
+        quotaRefreshing = true
+        defer { quotaRefreshing = false; quotaFetchedAt = Date() }
+        do {
+            let q = try await UsageAPI.fetch()
+            quota = q
+            q.save()
+            quotaError = nil
+        } catch {
+            quotaError = error.localizedDescription
+            activityTrace("quota refresh failed: \(error.localizedDescription)")
+        }
+        reconcile()
+    }
     func openUsageSettings() { settings.tab = .integration; onOpenSettings?() }
 
     /// Status-line payloads carry the real quota windows (subscribers) and the exact context window.
@@ -240,7 +266,10 @@ final class AppModel {
     func tick() async {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
-        if tickCount % 150 == 0 { store.catalog = ModelCatalog.load() }  // every ~5 min: Claude refreshes its model catalog
+        if tickCount % 150 == 0 {  // every ~5 min
+            await refreshQuota()
+            store.catalog = ModelCatalog.load()  // Claude refreshes its model catalog; pick up new models
+        }
         if tickCount % 30 == 0 { island.heartbeat() }  // every ~60 s: keeps the activity from reading as stale
         let before = Set(store.sessions.keys)
         // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
@@ -337,6 +366,9 @@ final class AppModel {
     func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
         holdPage()  // the user is using the island: stop turning pages under them
         switch action {
+        case .refreshQuota:
+            Task { await refreshQuota() }
+            return
         case .nextPage, .previousPage:
             activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
@@ -352,7 +384,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage: break
+        case .nextPage, .previousPage, .refreshQuota: break
         }
     }
 
