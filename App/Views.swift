@@ -312,9 +312,12 @@ struct SessionCard: View {
             VStack(alignment: .trailing, spacing: 1) {
                 if model.showCost {
                     Text(Fmt.cost(s.costUSD)).font(.system(size: 11.5, weight: .semibold))
-                    if !compact { Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 10.5)).foregroundStyle(.secondary) }
+                        .help("Estimated cost of this session at API prices.")
+                    if !compact {
+                        Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 10.5)).foregroundStyle(.secondary).help(tokenHelp)
+                    }
                 } else {
-                    Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 11.5, weight: .semibold))
+                    Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 11.5, weight: .semibold)).help(tokenHelp)
                 }
                 // This session's own subagents (the header carries the global count).
                 if !compact, let summary = s.subagentSummary {
@@ -323,9 +326,16 @@ struct SessionCard: View {
                         Text(summary).font(.system(size: 10))
                     }
                     .foregroundStyle(s.runningSubagents > 0 ? coral.opacity(0.95) : Color.green.opacity(0.85))
+                    .help("Subagents this session started: \(summary).")
                 }
             }.monospacedDigit()
         }
+    }
+
+    private var tokenHelp: String {
+        let u = s.usage
+        return "Tokens this session processed: \(Fmt.tokens(u.input)) input, \(Fmt.tokens(u.output)) output, "
+            + "\(Fmt.tokens(u.cacheWrite)) written to cache (cache reads not counted)."
     }
 
     private var activityLine: some View {
@@ -360,14 +370,24 @@ struct SessionCard: View {
 
     private var meta: some View {
         HStack(spacing: 8) {
-            ContextBar(fraction: s.contextFraction).frame(width: 64, height: 4)
-            Text("\(Int(s.contextFraction * 100))% ctx")
+            HStack(spacing: 8) {
+                ContextBar(fraction: s.contextFraction).frame(width: 64, height: 4)
+                Text("\(Int(s.contextFraction * 100))% context")
+            }
+            .help(
+                "Context window used: \(Fmt.tokens(s.contextTokens)) of \(Fmt.tokens(s.exactContextWindow ?? s.contextWindow)) tokens. "
+                    + "Claude Code compacts the conversation as this fills up.")
             if s.linesAdded + s.linesRemoved > 0 {
-                Text("+\(s.linesAdded)").foregroundStyle(.green.opacity(0.9))
-                Text("−\(s.linesRemoved)").foregroundStyle(.red.opacity(0.9))
+                HStack(spacing: 4) {
+                    Text("+\(s.linesAdded)").foregroundStyle(.green.opacity(0.9))
+                    Text("−\(s.linesRemoved)").foregroundStyle(.red.opacity(0.9))
+                }
+                .help("Lines added and removed by this session's edits: \(s.linesAdded) added, \(s.linesRemoved) removed.")
             }
             Spacer(minLength: 0)
-            if s.toolCalls > 0 { Text("\(s.toolCalls) tool calls") }
+            if s.toolCalls > 0 {
+                Text("\(s.toolCalls) tool calls").help("Tools this session has run (Bash, Edit, Read, …) since it started.")
+            }
         }
         .font(.system(size: 10.5)).foregroundStyle(.secondary).monospacedDigit()
     }

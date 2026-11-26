@@ -208,6 +208,53 @@ extension Badge where Label == Text {
     }
 }
 
+/// A labelled stat pill: an optional glyph, the value in bright type and what it measures in dim type, so the island
+/// explains itself without hover (Live Activities get no pointer events).
+struct Stat<Glyph: View, Value: View>: View {
+    var label: String
+    var tint: Color? = nil
+    @ViewBuilder var glyph: Glyph
+    @ViewBuilder var value: Value
+    var body: some View {
+        HStack(spacing: 4) {
+            glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
+            value.font(.system(size: 11, weight: .semibold)).foregroundStyle(tint ?? Color.white.opacity(0.9))
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.white.opacity(0.45))
+        }
+        .monospacedDigit().lineLimit(1)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(Color.white.opacity(0.08)))
+        .fixedSize()
+    }
+}
+
+extension Stat where Value == Text {
+    init(value: String, label: String, tint: Color? = nil, @ViewBuilder glyph: () -> Glyph) {
+        self.init(label: label, tint: tint, glyph: glyph) { Text(value) }
+    }
+}
+
+extension Stat where Glyph == EmptyView {
+    init(label: String, tint: Color? = nil, @ViewBuilder value: () -> Value) {
+        self.init(label: label, tint: tint, glyph: { EmptyView() }, value: value)
+    }
+}
+
+/// A tiny progress ring, used for context-window fill.
+struct Ring: View {
+    let fraction: Double
+    let tint: Color
+    var size: CGFloat = 10
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.18), lineWidth: 2)
+            Circle().trim(from: 0, to: max(0.04, min(1, fraction))).stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 // MARK: - The featured request
 
 /// The most urgent request: who asks and what kind, the question with its choices or the command, and the answer
@@ -353,19 +400,26 @@ struct SessionRow: View {
                 Button(intent: MarkReviewedIntent(sessionId: row.id)) { Pill(title: "Reviewed", height: 24, stretch: false) }
             case .working, .idle:
                 if row.subagentTotal > 0 {
-                    Badge(
-                        "\(row.subagents > 0 ? row.subagents : row.subagentTotal)",
-                        tint: row.subagents > 0 ? Island.coral : nil, icon: "point.3.connected.trianglepath.dotted")
+                    let running = row.subagents > 0
+                    Stat(
+                        value: "\(running ? row.subagents : row.subagentTotal)",
+                        label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
+                        tint: running ? Island.coral : nil
+                    ) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 9, weight: .bold))
+                    }
                 }
                 if row.linesAdded + row.linesRemoved > 0 {
-                    Badge {
+                    Stat(label: "lines") {
                         Text("+\(row.linesAdded)").foregroundStyle(Island.green)
                             + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
                     }
                 }
-                Badge(
-                    "\(Int(row.context * 100))%", tint: row.context > 0.65 ? Island.context(row.context) : nil,
-                    icon: "gauge.with.dots.needle.33percent")
+                // Neutral until the window is filling up (amber > 65 %, red > 85 %).
+                let full = row.context > 0.65
+                Stat(value: "\(Int(row.context * 100))%", label: "context", tint: full ? Island.context(row.context) : nil) {
+                    Ring(fraction: row.context, tint: full ? Island.context(row.context) : Color.white.opacity(0.8))
+                }
             }
         }
         .buttonStyle(.plain)
@@ -449,7 +503,9 @@ struct IslandTitle: View {
             if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
             if state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
             if state.subagentsRunning > 0 {
-                Badge("\(state.subagentsRunning)", icon: "point.3.connected.trianglepath.dotted")
+                Badge(
+                    "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
+                    icon: "point.3.connected.trianglepath.dotted")
             }
         }
     }
