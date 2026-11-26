@@ -30,17 +30,59 @@ final class ActivityHost {
     private(set) var activity: Activity<NotchAttributes>?
     private(set) var lastError: String?
     private var last: NotchActivityState?
+    private var stateTask: Task<Void, Never>?
+    /// Content older than this reads as stale in the widget (dimmed) if the app stops updating, for example after a crash.
+    private static let staleAfter: TimeInterval = 180
+
+    /// What the system uses to rank this activity against others in the island: needing you outranks working.
+    private static func relevance(_ s: NotchActivityState) -> Double {
+        switch s.phase {
+        case .needsYou: 100
+        case .working: 50
+        case .done: 20
+        case .idle: 5
+        }
+    }
+
+    private func content(_ s: NotchActivityState) -> ActivityContent<NotchActivityState> {
+        ActivityContent(
+            state: s, staleDate: Date().addingTimeInterval(Self.staleAfter), relevanceScore: Self.relevance(s))
+    }
+
+    /// Re-sends the current state so it does not go stale while the app is healthy.
+    func heartbeat() {
+        guard let activity, let last else { return }
+        Task { await activity.update(content(last)) }
+    }
+
+    /// The system (or the user, by dismissing it) can end the activity at any time; stop holding on to it.
+    private func observe(_ a: Activity<NotchAttributes>) {
+        stateTask?.cancel()
+        stateTask = Task { @MainActor [weak self] in
+            for await st in a.activityStateUpdates {
+                activityTrace("state \(st)")
+                if st == .ended || st == .dismissed {
+                    if self?.activity?.id == a.id { self?.activity = nil }
+                    break
+                }
+            }
+        }
+    }
     private var lastAlertKey: String?
 
     var isLive: Bool { activity != nil }
     var enabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
-    /// Re-attaches to an activity that survived a relaunch (ending duplicates) instead of stacking a second one.
-    func adoptExisting() {
+    /// Ends every activity left over from an earlier run. The system can keep reporting one as `active` while it is no
+    /// longer on screen (for example after the user swiped it away or the app was killed), so a fresh one is requested
+    /// instead of re-attaching to it.
+    func resetExisting() async {
+        stateTask?.cancel()
         let existing = Activity<NotchAttributes>.activities
-        activity = existing.first
-        activityTrace("adopted \(existing.count) existing activities")
-        for extra in existing.dropFirst() { Task { await extra.end(nil, dismissalPolicy: .immediate) } }
+        activityTrace("reset: ending \(existing.count) existing")
+        activity = nil
+        last = nil
+        for a in existing { await a.end(nil, dismissalPolicy: .immediate) }
     }
 
     /// Starts the activity if there is none. Returns whether one is live afterwards.
@@ -50,10 +92,11 @@ final class ActivityHost {
         guard enabled else { lastError = "Live Activities are turned off for Claude Notch in System Settings."; return false }
         do {
             activity = try Activity.request(
-                attributes: NotchAttributes(title: "Claude Notch"), content: .init(state: state, staleDate: nil), pushType: nil,
+                attributes: NotchAttributes(title: "Claude Notch"), content: content(state), pushType: nil,
                 style: .standard)
             last = state
             lastError = nil
+            if let a = activity { observe(a) }
             activityTrace("started"); log.notice("started \(self.activity?.id ?? "?", privacy: .public)")
             return true
         } catch {
@@ -69,7 +112,7 @@ final class ActivityHost {
         guard let activity else { return }
         if state == last, alert == nil { return }
         last = state
-        let content = ActivityContent(state: state, staleDate: nil)
+        let content = content(state)
         let key = alert.map { "\($0.title)|\($0.body)" }
         Task {
             if let alert, key != lastAlertKey {
@@ -87,6 +130,7 @@ final class ActivityHost {
 
     func end() async {
         guard let a = activity else { return }
+        stateTask?.cancel()
         await a.end(nil, dismissalPolicy: .immediate)
         activity = nil
     }

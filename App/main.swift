@@ -26,7 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }; self.detailWindow.show(model: self.model)
         }
         IntentBridge.handler = { [weak self] action, sid, rid in self?.model.handleIntent(action, sessionId: sid, requestId: rid) }
-        model.island.adoptExisting()
         model.start(demo: demo)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -44,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A window makes the app frontmost, which starting the activity requires. Once the island is up, tuck away.
         detailWindow.show(model: model)
         Task { @MainActor in
+            await model.island.resetExisting()
             for _ in 0..<30 {
                 try? await Task.sleep(for: .milliseconds(500))
                 model.reconcile()

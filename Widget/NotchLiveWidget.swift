@@ -35,10 +35,46 @@ extension NotchActivityState.Kind {
     }
 }
 
-struct Glyph: View {
+private let orange = Color(red: 0.97, green: 0.52, blue: 0.18)
+
+extension NotchActivityState.Phase {
+    /// Waveform colour: orange while agents run, amber when you are needed, grey otherwise.
+    var waveTint: Color {
+        switch self {
+        case .working: orange
+        case .needsYou: amber
+        default: .gray
+        }
+    }
+    var isActive: Bool { self == .working || self == .needsYou }
+}
+
+/// The Claude tile, standing in for album art: tinted by state, with a checkmark when everything is done.
+struct Tile: View {
     let phase: NotchActivityState.Phase
+    var size: CGFloat = 24
     var body: some View {
-        Image(systemName: phase.symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(phase.tint)
+        RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+            .fill(LinearGradient(colors: [phase.tint, phase.tint.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: size, height: size)
+            .overlay(
+                Image(systemName: phase.symbol).font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(.white.opacity(0.95)))
+    }
+}
+
+/// Music-style waveform: animated bars while active, flat grey dots when idle.
+struct Wave: View {
+    let phase: NotchActivityState.Phase
+    var size: CGFloat = 16
+    var body: some View {
+        if phase.isActive {
+            Image(systemName: "waveform").font(.system(size: size, weight: .semibold)).foregroundStyle(phase.waveTint)
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers.reversing, options: .repeating)
+        } else {
+            HStack(spacing: 2.5) {
+                ForEach(0..<6, id: \.self) { _ in Circle().fill(Color.gray.opacity(0.7)).frame(width: 2.5, height: 2.5) }
+            }
+        }
     }
 }
 
@@ -47,11 +83,10 @@ struct LimitBar: View {
     let fraction: Double
     var body: some View {
         let tint: Color = fraction >= 0.9 ? .red : (fraction >= 0.75 ? amber : .blue)
-        HStack(spacing: 6) {
-            Text(label).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
+        HStack(spacing: 5) {
+            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
             ProgressView(value: fraction).tint(tint)
             Text("\(Int((fraction * 100).rounded()))%").font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary)
-                .frame(width: 30, alignment: .trailing)
         }
     }
 }
@@ -76,11 +111,18 @@ struct RowView: View {
                 }
                 Text(row.detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            if row.kind == .review {
-                Button(intent: MarkReviewedIntent(sessionId: row.id)) { Text("Done") }.buttonStyle(.bordered).controlSize(.mini)
-            } else if row.kind == .question || row.kind == .input {
-                Button(intent: OpenSessionIntent(sessionId: row.id)) { Text("Open") }.buttonStyle(.bordered).controlSize(.mini)
-            }
+            RowActions(row: row)
+        }
+    }
+}
+
+struct RowActions: View {
+    let row: NotchActivityState.Row
+    var body: some View {
+        if row.kind == .review {
+            Button(intent: MarkReviewedIntent(sessionId: row.id)) { Text("Done") }.buttonStyle(.bordered).controlSize(.mini)
+        } else if row.kind == .question || row.kind == .input {
+            Button(intent: OpenSessionIntent(sessionId: row.id)) { Text("Open") }.buttonStyle(.bordered).controlSize(.mini)
         }
     }
 }
@@ -105,22 +147,48 @@ struct ApprovalView: View {
     }
 }
 
+extension NotchActivityState {
+    /// One line for the header: the most urgent session and what it is doing.
+    var lead: String {
+        guard let r = rows.first else { return "No active sessions" }
+        return "\(r.name) · \(r.detail)"
+    }
+}
+
+/// What sits under the header: the approval if there is one, otherwise the other sessions, then the two limits in one row.
 struct ActivityBody: View {
     let state: NotchActivityState
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let a = state.approval { ApprovalView(a: a) }
-            ForEach(state.rows.filter { $0.id != state.approval?.sessionId }) { RowView(row: $0) }
-            if state.more > 0 {
-                Text("+\(state.more) more").font(.system(size: 10)).foregroundStyle(.secondary)
+            if let a = state.approval {
+                ApprovalView(a: a)
+            } else {
+                ForEach(state.rows.dropFirst()) { RowView(row: $0) }
+                if let r = state.rows.first, r.kind == .review || r.kind == .question || r.kind == .input { RowActions(row: r) }
             }
-            if state.rows.isEmpty { Text("No active sessions").font(.system(size: 11)).foregroundStyle(.secondary) }
+            if state.more > 0 { Text("+\(state.more) more").font(.system(size: 10)).foregroundStyle(.secondary) }
             if state.fiveHour != nil || state.weekly != nil {
-                VStack(spacing: 3) {
-                    if let f = state.fiveHour { LimitBar(label: "5 hour", fraction: f) }
-                    if let w = state.weekly { LimitBar(label: "Weekly", fraction: w) }
+                HStack(spacing: 10) {
+                    if let f = state.fiveHour { LimitBar(label: "5h", fraction: f) }
+                    if let w = state.weekly { LimitBar(label: "wk", fraction: w) }
                 }
             }
+        }
+    }
+}
+
+/// Header shared by the expanded island and the banner: tile, headline and the lead session on the left, waveform right.
+struct Header: View {
+    let state: NotchActivityState
+    var body: some View {
+        HStack(spacing: 10) {
+            Tile(phase: state.phase, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.headline).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                Text(state.lead).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Wave(phase: state.phase, size: 18)
         }
     }
 }
@@ -128,15 +196,8 @@ struct ActivityBody: View {
 struct Banner: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Glyph(phase: state.phase)
-                Text(state.headline).font(.headline)
-                Spacer()
-                if state.subagentsRunning > 0 {
-                    Label("\(state.subagentsRunning)", systemImage: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
-                }
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Header(state: state)
             ActivityBody(state: state)
         }
         .padding()
@@ -146,27 +207,27 @@ struct Banner: View {
 struct ClaudeNotchActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NotchAttributes.self) { ctx in
-            Banner(state: ctx.state)
+            Banner(state: ctx.state).opacity(ctx.isStale ? 0.5 : 1)
         } dynamicIsland: { ctx in
             let s = ctx.state
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) { Glyph(phase: s.phase) }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(s.needsYou > 0 ? "\(s.needsYou)" : "\(s.working)").font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(s.phase.tint)
-                }
+                DynamicIslandExpandedRegion(.leading) { Tile(phase: s.phase, size: 40) }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(s.headline).font(.headline).foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.headline).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                        Text(s.lead).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
                 }
+                DynamicIslandExpandedRegion(.trailing) { Wave(phase: s.phase, size: 18) }
                 DynamicIslandExpandedRegion(.bottom) { ActivityBody(state: s) }
             } compactLeading: {
-                Glyph(phase: s.phase)
+                Tile(phase: s.phase, size: 22)
             } compactTrailing: {
-                Text(s.needsYou > 0 ? "\(s.needsYou)" : (s.working > 0 ? "\(s.working)" : "")).foregroundStyle(s.phase.tint)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                Wave(phase: s.phase, size: 14)
             } minimal: {
-                Glyph(phase: s.phase)
+                Tile(phase: s.phase, size: 22)
             }
+            .keylineTint(s.phase.tint)
         }
     }
 }

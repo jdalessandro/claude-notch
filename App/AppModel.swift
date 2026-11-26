@@ -213,6 +213,7 @@ final class AppModel {
     func tick() async {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
+        if tickCount % 30 == 0 { island.heartbeat() }  // every ~60 s: keeps the activity from reading as stale
         let before = Set(store.sessions.keys)
         // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
         let effects = store.prune(idleTTL: prefs.sessionRetention.seconds)
@@ -242,6 +243,7 @@ final class AppModel {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
         Task { @MainActor in
+            await island.resetExisting()  // always a fresh activity: the old one may be "active" but not on screen
             try? await Task.sleep(for: .milliseconds(400))
             reconcile()
             if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) } else { onShowWindow?() }
