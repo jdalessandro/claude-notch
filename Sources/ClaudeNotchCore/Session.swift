@@ -125,6 +125,8 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
     public var lastTurnDuration: TimeInterval?
     /// Finished/needs-attention state the user has not looked at yet.
     public var unseen = false
+    /// When the last turn completed; a Claude Desktop focus after this means the user has looked at the result.
+    public var finishedAt: Date?
     public var toolCalls = 0
     public var subagents: [String: Subagent] = [:]
     /// The main agent's turn has ended (Stop). Background subagents can still be running after this.
@@ -272,7 +274,7 @@ public struct SessionStore: Sendable {
             }
             // The main turn already ended and this was the last subagent: the work is now actually done.
             if s.mainTurnEnded, s.runningSubagents == 0, s.status != .ended {
-                Self.finishTurn(&s)
+                Self.finishTurn(&s, now: now)
                 effect = .notify(sessionId: sid, kind: .finished)
             }
 
@@ -363,7 +365,7 @@ public struct SessionStore: Sendable {
                 // "finished" notification waits for the last one to stop.
                 if s.status != .needsInput { s.status = .working }
             } else {
-                Self.finishTurn(&s)
+                Self.finishTurn(&s, now: now)
                 effect = .notify(sessionId: sid, kind: .finished)
             }
 
@@ -394,7 +396,8 @@ public struct SessionStore: Sendable {
     }
 
     /// Marks the turn as complete: idle, unseen result waiting for review.
-    static func finishTurn(_ s: inout AgentSession) {
+    static func finishTurn(_ s: inout AgentSession, now: Date) {
+        s.finishedAt = now
         s.workingSince = nil
         s.currentTool = nil
         s.currentToolDetail = nil
@@ -444,6 +447,12 @@ public struct SessionStore: Sendable {
         sessions[id] = s
     }
 
+    /// Marks finished sessions as seen when the user focused them in Claude Desktop after the turn completed.
+    public mutating func markViewed(focusedAt: (String) -> Date?) {
+        for (id, s) in sessions where s.status == .done && s.unseen {
+            if let done = s.finishedAt, let f = focusedAt(id), f > done { markSeen(id) }
+        }
+    }
     public mutating func markAllSeen() { for id in sessions.keys { markSeen(id) } }
 
     /// The user answered a permission request from the notch.
@@ -471,7 +480,7 @@ public struct SessionStore: Sendable {
                 s.subagents[k]?.endedAt = now
                 s.subagents[k]?.currentDetail = nil
             }
-            Self.finishTurn(&s)
+            Self.finishTurn(&s, now: now)
             sessions[id] = s
             effects.append(.notify(sessionId: id, kind: .finished))
         }

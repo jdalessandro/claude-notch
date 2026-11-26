@@ -22,6 +22,19 @@ import Testing
         #expect(s.sessions["s1"]?.lastTurnDuration == 10)
     }
 
+    @Test func focusingAfterTheTurnFinishedMarksItViewed() {
+        var s = SessionStore()
+        s.apply(ev("UserPromptSubmit", t: 1) { $0.prompt = "x" })
+        s.apply(ev("Stop", t: 11))
+        let done = s.sessions["s1"]!.finishedAt!
+        s.markViewed { _ in done.addingTimeInterval(-5) }  // looked at it before it finished
+        #expect(s.sessions["s1"]?.unseen == true)
+        s.markViewed { _ in nil }
+        #expect(s.sessions["s1"]?.unseen == true)
+        s.markViewed { _ in done.addingTimeInterval(5) }
+        #expect(s.sessions["s1"]?.unseen == false)
+    }
+
     @Test func answerableRequestSurvivesParallelToolsAndResolvesOnMatchingPostToolUse() {
         var s = SessionStore()
         let eff = s.apply(

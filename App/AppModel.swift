@@ -276,6 +276,8 @@ final class AppModel {
     private var seenAttention: Set<String> = []
     /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
     /// needs the user.
+        // Looking at a finished session in Claude Desktop counts as reviewing it.
+        store.markViewed { DesktopSessionLink.lastFocused(forCLISession: $0) }
     private var islandPage = 0
     /// Pages turn by themselves every `pageInterval`. The island can't report hover, so any tap on it (and anything new
     /// needing the user) holds the current page for `pageHold` instead.
