@@ -5,27 +5,31 @@ See every running agent at a glance, get told when something finishes or needs y
 without switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
 <p align="center">
-  <img src="docs/screens/expanded-needs-you.png" alt="Expanded island: sessions grouped by what needs you, with subagents and plan usage limits" width="380">
+  <img src="docs/screens/expanded-question.png" alt="Expanded island: Claude's question as a card, another session's permission request with Allow/Deny, and plan limits" width="380">
 </p>
 
 <p align="center">
-  <img src="docs/screens/collapsed.png" alt="Collapsed island: Claude tile and live waveform beside the cutout" width="300">
+  <img src="docs/screens/compact-working.png" alt="Compact island while agents work" width="300">
   &nbsp;&nbsp;
-  <img src="docs/screens/expanded-compact.png" alt="Compact view: one line per session with inline Allow/Deny" width="300">
+  <img src="docs/screens/compact-needs-you.png" alt="Compact island when something needs you" width="300">
 </p>
 
 ## Features
 
-- **Always-visible status.** The collapsed island shows a Claude tile (coral = working, amber = needs you, green = done,
-  with a count badge) and a live waveform that moves while an agent works.
-- **Two expanded views, and it remembers your choice.** Hover (or click) to open the **Detailed** view, grouped into **Needs you**, **Ready to review**, **Working** and **Idle**, or the **Compact** view: one line per session with Allow/Deny inline and a mini plan-limit readout. Flip between them from the island header; the last one you used is restored every time, even after a relaunch. Clicking a session in the compact view jumps to it in the detailed view (until the island closes, so your saved choice is untouched).
-- **Narrow by design.** The island is 320 pt (compact) to 350 pt (detailed) wide by default, in the proportions of the system media island; widths are adjustable in Settings.
+- **A real Dynamic Island.** The island is a macOS Live Activity, drawn by the system beside the cutout: a compact
+  view with the headline and a waveform that moves while agents work, and an expanded view that opens by itself when
+  something needs you. The system decides its size, position and when it expands.
+- **The most urgent request up front.** A permission request shows the exact command with **Allow / Deny**; a question
+  shows its choices with **Answer in Claude** / **Not now**. Up to three more sessions follow, each with its own state,
+  timer, subagent count and context, and a second permission request can be answered inline from its row.
+- **The full picture in a window.** *Sessions…* (menu bar) lists every session grouped into **Needs you**,
+  **Ready to review**, **Working** and **Idle**, with the usage card.
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
 - **A subagent tree you can explore.** The header counts the total ("6 agents" over "4 subagents running"), and every session shows its own stat under its token count ("⑂ 2 running · 1 done"; a branch glyph and count in the compact view). Each session lists its subagents running-first with a ├/└ tree; tap the **Subagents** header to open all of them with what each is doing right now, its tool-call count and its last result. A session whose main turn has ended but whose subagents still run stays **Working** ("Waiting on 2 subagents") and is only marked finished, with its notification, when the last one stops. A subagent silent for 15 minutes is treated as finished so nothing can stay stuck.
-- **Questions look like questions.** When Claude asks you something, the island shows the question and its choices with **Answer in Claude** / **Not now** (a single **Answer** button in the compact view) instead of a raw tool name with Allow/Deny.
-- **Reviewed without busywork.** A finished result moves out of *Ready to review* by itself when you reply in that session, or when you view the full result in the island (pointer over the detailed view) for about five seconds. The island opening on its own for a notification never counts, and neither does the truncated compact view. Claude Code has no "the user read this" signal, so these are the honest signals available; *Settings ▸ General* switches to fully manual, and **Open** / **Mark reviewed** always work.
+- **Reviewed without busywork.** A finished result leaves *Ready to review* when you reply in that session or tap
+  **Done**.
 - **Approve from the island.** Tool-permission requests show the exact command with **Allow / Deny**. Requests from a
   subagent say so.
 - **Plan limits like Claude Desktop.** 5-hour, weekly, and per-model weekly limits as percentage bars with reset times
@@ -38,7 +42,8 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 
 ## Requirements
 
-- A Mac running **macOS 14 or later**. Designed for notched MacBook Pros; works on other displays with a virtual island.
+- A Mac running **macOS 27.3 or later** (Live Activities on the Mac) with Xcode 27.3+ to build. Best on a notched MacBook Pro.
+- An Apple developer team for signing (a free Personal Team is enough for local builds): the Allow / Deny buttons are App Intents, which the system only runs for properly signed apps.
 - **Claude Code** (CLI and/or the Claude desktop app's Code tab).
 - To build: the Swift 6 toolchain (Xcode or just the Command Line Tools).
 
@@ -49,15 +54,17 @@ There are no binary releases yet; build from source:
 ```bash
 git clone https://github.com/jdalessandro/claude-notch.git
 cd claude-notch
-make bundle                 # builds dist/ClaudeNotch.app (menu-bar-only, ad-hoc signed)
+echo YOUR_TEAM_ID > .xcode-team   # 10 characters, from Xcode ▸ Settings ▸ Accounts (never committed)
+make bundle                       # generates the Xcode project and builds dist/ClaudeNotch.app
 open dist/ClaudeNotch.app
 ```
 
-Then click the island ▸ **Install hooks** (or *Settings ▸ Integration*), and restart any Claude sessions that were
+The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
+the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
+
+Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
 already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
 at `settings.json.claude-notch.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
-
-Because the build is ad-hoc signed, macOS may ask you to confirm the first launch (right-click ▸ Open).
 
 **Just want to look around?** `make demo` launches the app with synthetic agents and no setup.
 
@@ -107,11 +114,11 @@ click **Allow** or **Deny**. Things to know:
 
 ## Settings
 
-Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while the app is active. Changes apply immediately.
+Open from the menu-bar icon, the *Sessions* window's **⋯ ▸ Settings…**, or ⌘, while the app is active. Changes apply immediately.
 
 | Tab | Options |
 |---|---|
-| **General** | Island style (floating / attached), width, collapsed view (tile + waveform / waveform only), hide when idle · expanded view (compact / detailed), expand on hover, hover delay, auto-open on events and how long, forget idle sessions after |
+| **General** | Raise the island when something needs you · forget idle sessions after |
 | **Content** | Show prompt, subagents, context meter and changed lines, usage and quota · usage card shows limits (%) or tokens · dollar cost (automatic / always / never) |
 | **Notifications** | Per event (approval, input, finished, failed) · sound · system notifications · include command/reply details in banners |
 | **Integration** | Install / reinstall / uninstall hooks · approve from the island · quota gauges |
@@ -123,7 +130,8 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 |---|---|
 | Nothing appears | Is the app running (menu-bar sparkle)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
-| Island flickers or won't open | Increase *Hover delay*, or turn off *Expand on hover* and click to open. |
+| Island missing | Menu bar ▸ **Show Island**. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
+| Allow / Deny do nothing | The build must be signed with a real team (see Requirements); ad-hoc signed builds can't run App Intents. |
 | No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Claude Notch leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
 | Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
@@ -131,11 +139,11 @@ Open from the island's **⋯ ▸ Settings…**, the menu-bar icon, or ⌘, while
 ## Development
 
 ```bash
-make build test      # build and run the 118-test suite
+make build test      # build and run the core test suite
 make lint            # swift-format, strict
 make format          # fix formatting
 make demo            # run with fake agents
-make snapshots       # re-render docs/screens/*.png (offscreen)
+make snapshots       # re-render docs/screens/*.png from the demo data (offscreen)
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). With only the Command Line Tools installed, the compiler occasionally reports
@@ -144,7 +152,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). With only the Command Line Tools install
 ```
 Sources/ClaudeNotchCore   pure logic: events, state machine, transcript + usage parsing, IPC, installer, preferences
 Sources/claude-notch-hook the forwarder Claude Code invokes (never blocks a session)
-Sources/ClaudeNotch       the app: AppKit panel, SwiftUI views, settings window
+App/                      the host app: model, Live Activity host, Sessions window, settings, menu bar
+Shared/                   island views, App Intents and activity attributes (app + widget)
+Widget/                   the widget extension that draws the Live Activity
 Tests/                    Swift Testing suites
 ```
 
@@ -164,7 +174,7 @@ file permissions, refuses to touch unexpected JSON shapes, skips no-op writes, a
 - Context-window size is inferred (200k, or 1M if observed larger) unless the status line is enabled.
 - The `Notification` payload field names come from documentation excerpts; the state machine also falls back to the message text.
 - Clicking a session activates the terminal/app but cannot focus a specific tab.
-- Island geometry is derived from the screen's safe-area values; the floating style's top gap is calibrated to current hardware.
+- The system owns the island: no hover, scrolling or text entry, and the activity can only be (re)started while the app is in the foreground.
 
 ## Roadmap
 

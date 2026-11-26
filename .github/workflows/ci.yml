@@ -23,6 +23,8 @@ jobs:
       - name: Toolchain
         run: swift --version
 
+      # The app target needs the macOS 27.3 SDK (ActivityKit), which hosted runners do not have yet: CI covers the
+      # SwiftPM core and hook; the app is built locally with `make bundle`.
       - name: Build
         run: swift build
 
@@ -31,15 +33,4 @@ jobs:
         run: swift test --no-parallel
 
       - name: Lint
-        run: swift format lint --strict -r Sources Tests Package.swift
-
-      - name: Bundle app
-        if: hashFiles('scripts/bundle.sh') != ''
-        run: ./scripts/bundle.sh
-
-      - name: Upload app
-        if: hashFiles('scripts/bundle.sh') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: ClaudeNotch-app
-          path: dist/ClaudeNotch.app
+        run: swift format lint --strict -r Sources Tests App Shared Widget Package.swift

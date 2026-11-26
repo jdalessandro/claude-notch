@@ -1,0 +1,60 @@
+import AppIntents
+import Foundation
+
+/// Where the intents deliver their result. `perform()` runs inside the host app's process (verified in the spike),
+/// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
+@MainActor
+enum IntentBridge {
+    enum Action: Sendable { case allow, deny, open, reviewed }
+    static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
+}
+
+/// Intents must be compiled into the app *and* the widget. Each carries the request it answers, so a duplicated or
+/// stale tap is ignored by the model instead of answering a newer request.
+struct AllowIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Allow"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.allow, sessionId, requestId)
+        return .result()
+    }
+}
+
+struct DenyIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Deny"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.deny, sessionId, requestId)
+        return .result()
+    }
+}
+
+/// Brings the session's terminal / Claude app to the front (and answers a question by letting it through).
+struct OpenSessionIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Open"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String = "") { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.open, sessionId, requestId)
+        return .result()
+    }
+}
+
+struct MarkReviewedIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Mark reviewed"
+    @Parameter(title: "Session") var sessionId: String
+    init() {}
+    init(sessionId: String) { self.sessionId = sessionId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.reviewed, sessionId, "")
+        return .result()
+    }
+}

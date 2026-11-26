@@ -88,44 +88,7 @@ struct GeneralTab: View {
     var body: some View {
         Form {
             Section {
-                Picker("Style", selection: $settings.prefs.islandStyle) {
-                    Text("Floating island").tag(Preferences.IslandStyle.floating)
-                    Text("Attached to notch").tag(Preferences.IslandStyle.attached)
-                }
-                Picker("Width", selection: $settings.prefs.panelWidth) {
-                    Text("Compact").tag(Preferences.PanelWidth.compact)
-                    Text("Regular").tag(Preferences.PanelWidth.regular)
-                    Text("Wide").tag(Preferences.PanelWidth.wide)
-                }.pickerStyle(.segmented)
-                Picker("Collapsed view", selection: $settings.prefs.collapsedStyle) {
-                    Text("Tile and waveform").tag(Preferences.CollapsedStyle.tileAndWaveform)
-                    Text("Waveform only").tag(Preferences.CollapsedStyle.waveformOnly)
-                }
-                Toggle("Hide when no agents are running", isOn: $settings.prefs.hideWhenIdle)
-            } header: {
-                Text("Island")
-            } footer: {
-                hint("Floating matches the Dynamic Island look; Attached fuses with the top edge like the classic notch.")
-            }
-
-            Section {
-                Picker("Expanded view", selection: $settings.prefs.expandedMode) {
-                    Text("Compact").tag(Preferences.ExpandedMode.compact)
-                    Text("Detailed").tag(Preferences.ExpandedMode.detailed)
-                }.pickerStyle(.segmented)
-                Toggle("Expand on hover", isOn: $settings.prefs.expandOnHover)
-                Picker("Hover delay", selection: $settings.prefs.hoverDelay) {
-                    Text("Instant").tag(Preferences.HoverDelay.instant)
-                    Text("Short").tag(Preferences.HoverDelay.short)
-                    Text("Long").tag(Preferences.HoverDelay.long)
-                }.disabled(!settings.prefs.expandOnHover)
-                Toggle("Mark results as reviewed automatically", isOn: $settings.prefs.autoMarkReviewed)
-                Toggle("Open automatically when something happens", isOn: $settings.prefs.autoExpandOnEvents)
-                Stepper(
-                    "Stay open for \(settings.prefs.autoExpandSeconds) seconds",
-                    value: $settings.prefs.autoExpandSeconds, in: 2...30
-                )
-                .disabled(!settings.prefs.autoExpandOnEvents)
+                Toggle("Raise the island when something needs you", isOn: $settings.prefs.autoExpandOnEvents)
                 Picker("Forget idle sessions after", selection: $settings.prefs.sessionRetention) {
                     Text("1 hour").tag(Preferences.SessionRetention.oneHour)
                     Text("4 hours").tag(Preferences.SessionRetention.fourHours)
@@ -136,7 +99,7 @@ struct GeneralTab: View {
                 Text("Behavior")
             } footer: {
                 hint(
-                    "Switch between compact and detailed from the island header; your choice is remembered. With hover off, click the island to open it and use the pin to keep it open. Approval requests always open it. Results are marked reviewed when you reply in that session, or when you view the full result here (pointer over the detailed view) for a few seconds; turn that off to dismiss them yourself."
+                    "The island is a macOS Live Activity, so the system decides its size, position and when it expands. Approval requests and questions always raise it. Finished results are marked reviewed when you reply in that session or tap Done."
                 )
             }
         }

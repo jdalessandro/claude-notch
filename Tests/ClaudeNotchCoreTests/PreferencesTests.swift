@@ -11,27 +11,19 @@ import Testing
 
     @Test func roundTrips() {
         let d = suite(); var p = Preferences()
-        p.islandStyle = .attached; p.panelWidth = .wide; p.notifyOnFinished = false; p.autoExpandSeconds = 12; p.costDisplay = .always
+        p.sessionRetention = .oneDay; p.notifyOnFinished = false; p.autoExpandOnEvents = false; p.costDisplay = .always
         p.save(d)
         #expect(Preferences.load(d) == p)
     }
 
     @Test func toleratesMissingUnknownAndInvalidValues() throws {
-        let json = #"{"panelWidth":"gigantic","showPrompt":false,"futureSetting":{"a":1},"hoverDelay":"long","autoExpandSeconds":9999}"#
+        // "panelWidth" is a setting from the old AppKit panel: old blobs must still load.
+        let json = #"{"costDisplay":"gigantic","showPrompt":false,"futureSetting":{"a":1},"sessionRetention":"oneDay","panelWidth":"wide"}"#
         let p = try JSONDecoder().decode(Preferences.self, from: Data(json.utf8))
-        #expect(p.panelWidth == .regular)  // invalid enum -> default, not a decode failure
-        #expect(p.showPrompt == false && p.hoverDelay == .long)
-        #expect(p.autoExpandSeconds == 30)  // clamped
+        #expect(p.costDisplay == .auto)  // invalid enum -> default, not a decode failure
+        #expect(p.showPrompt == false && p.sessionRetention == .oneDay)
         #expect(p.soundEnabled == true)  // missing -> default
         #expect(Preferences.load(suite()) == Preferences())  // nothing stored -> defaults
-    }
-
-    @Test func expandedModeIsRememberedAndTolerant() throws {
-        #expect(Preferences().expandedMode == .detailed)
-        let d = suite(); var p = Preferences(); p.expandedMode = .compact; p.save(d)
-        #expect(Preferences.load(d).expandedMode == .compact)  // survives "relaunch"
-        let bad = try JSONDecoder().decode(Preferences.self, from: Data(#"{"expandedMode":"tiny"}"#.utf8))
-        #expect(bad.expandedMode == .detailed)
     }
 
     @Test func corruptBlobFallsBackToDefaults() {
@@ -41,10 +33,9 @@ import Testing
 
     @Test func migratesLegacyKeysOnce() {
         let d = suite()
-        d.set(false, forKey: "interactive"); d.set(false, forKey: "sound"); d.set("never", forKey: "costMode");
-        d.set(false, forKey: "floatingIsland")
+        d.set(false, forKey: "interactive"); d.set(false, forKey: "sound"); d.set("never", forKey: "costMode")
         let p = Preferences.load(d)
-        #expect(!p.approveFromIsland && !p.soundEnabled && p.costDisplay == .never && p.islandStyle == .attached)
+        #expect(!p.approveFromIsland && !p.soundEnabled && p.costDisplay == .never)
         p.save(d)
         d.set(true, forKey: "interactive")  // once saved, legacy keys are ignored
         #expect(Preferences.load(d).approveFromIsland == false)
@@ -54,13 +45,5 @@ import Testing
         var p = Preferences(); p.notifyOnFinished = false
         #expect(p.shouldNotify(.permission) && p.shouldNotify(.input) && p.shouldNotify(.failed))
         #expect(!p.shouldNotify(.finished))
-    }
-
-    @Test func automaticReviewDefaultsOnAndCanBeSwitchedOff() throws {
-        #expect(Preferences().autoMarkReviewed)
-        var p = Preferences(); p.autoMarkReviewed = false
-        let d = suite(); p.save(d)
-        #expect(Preferences.load(d).autoMarkReviewed == false)
-        #expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).autoMarkReviewed)  // older settings: default on
     }
 }

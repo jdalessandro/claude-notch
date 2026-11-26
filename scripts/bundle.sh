@@ -1,27 +1,14 @@
 #!/usr/bin/env bash
-# Builds dist/ClaudeNotch.app (menu-bar-only agent app) with the hook binary alongside it.
+# Builds dist/ClaudeNotch.app: the Live Activity host app with its widget extension and the hook forwarder.
+# Needs Xcode 27.3+ (ActivityKit on macOS) and a signing team: set CLAUDE_NOTCH_TEAM or put the team id in .xcode-team.
+# Live Activity buttons (Allow / Deny) only work in a build signed with a real team; ad-hoc signing is rejected by the system.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION=$(cat VERSION)
-swift build -c release
-BIN=$(swift build -c release --show-bin-path)
-APP=dist/ClaudeNotch.app
-rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS"
-cp "$BIN/ClaudeNotch" "$BIN/claude-notch-hook" "$APP/Contents/MacOS/"
-cat > "$APP/Contents/Info.plist" <<P
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleIdentifier</key><string>dev.claude-notch.app</string>
-  <key>CFBundleName</key><string>Claude Notch</string>
-  <key>CFBundleExecutable</key><string>ClaudeNotch</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>LSUIElement</key><true/>
-  <key>NSHighResolutionCapable</key><true/>
-</dict></plist>
-P
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "warning: ad-hoc codesign failed"
-echo "Built $APP"
+CONFIG=${CONFIG:-Release}
+python3 scripts/gen_xcodeproj.py
+xcodebuild -project ClaudeNotch.xcodeproj -scheme ClaudeNotch -configuration "$CONFIG" -derivedDataPath build \
+  -allowProvisioningUpdates build | grep -E "error|warning: .*sign|BUILD" || true
+APP="build/Build/Products/$CONFIG/ClaudeNotch.app"
+[ -d "$APP" ] || { echo "build failed"; exit 1; }
+rm -rf dist && mkdir -p dist && cp -R "$APP" dist/
+echo "Built dist/ClaudeNotch.app"

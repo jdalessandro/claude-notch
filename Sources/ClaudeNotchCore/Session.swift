@@ -131,7 +131,6 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
     public var mainTurnEnded = false
     /// Descriptions of Task/Agent tool calls not yet matched to a started subagent.
     var taskQueue: [String] = []
-    public var orderedSubagents: [Subagent] { subagents.values.sorted { $0.startedAt < $1.startedAt } }
     /// For the tree: what is running now first (oldest first), then finished ones, most recently finished first.
     public var rankedSubagents: [Subagent] {
         let all = subagents.values
@@ -148,8 +147,6 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
         if running > 0 { return done > 0 ? "\(running) running · \(done) done" : "\(running) running" }
         return "\(done) done"
     }
-    /// The number to show next to the branch glyph in tight spaces: what is running, else how many finished.
-    public var subagentBadgeCount: Int { runningSubagents > 0 ? runningSubagents : subagents.count }
     public var runningSubagents: Int { subagents.values.filter { $0.status == .running }.count }
     mutating func takeTaskDescription() -> String? { taskQueue.isEmpty ? nil : taskQueue.removeFirst() }
     // Usage (from transcript)
@@ -196,8 +193,6 @@ public struct SessionStore: Sendable {
         }
     }
     public var active: [AgentSession] { ordered.filter { $0.status != .ended } }
-    public var attentionCount: Int { active.filter { $0.status.needsAttention || $0.unseen }.count }
-    public var workingCount: Int { active.filter { $0.status == .working || $0.status == .compacting }.count }
 
     public enum Effect: Equatable, Sendable {
         case none

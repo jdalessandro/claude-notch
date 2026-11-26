@@ -1,5 +1,10 @@
+*.app
+*.xcuserdata
+.DS_Store
 .build/
 .swiftpm/
-*.app
+.xcode-team
+ClaudeNotch.xcodeproj/
+build/
 dist/
-.DS_Store
+xcuserdata/
