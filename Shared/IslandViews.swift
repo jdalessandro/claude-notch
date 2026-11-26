@@ -141,14 +141,16 @@ struct AgentWave: View {
             HStack(alignment: .center, spacing: height * 0.14) {
                 ForEach(0..<(main + subs), id: \.self) { i in
                     let isSub = i >= main
+                    // Fixed-size bar scaled vertically: the layout never changes between beats, so the system's
+                    // snapshot can't catch the bars collapsed or missing mid-animation.
                     Capsule().fill(tint)
-                        .frame(
-                            width: height * (isSub ? 0.12 : 0.17),
-                            height: height * Self.level(i, pulse) * (isSub ? 0.75 : 1))
+                        .frame(width: height * (isSub ? 0.12 : 0.17), height: height * (isSub ? 0.75 : 1))
+                        .scaleEffect(y: Self.level(i, pulse))
                 }
             }
             .frame(height: height)
             .animation(.easeInOut(duration: 0.9), value: pulse)
+            .contentTransition(.identity)
         }
     }
 }
@@ -343,19 +345,29 @@ struct PromptPanel: View {
 struct SessionRow: View {
     let row: NotchActivityState.Row
     var body: some View {
+        // Live Activities don't deliver taps to a button hidden behind other content, so the tappable regions are the
+        // visible header and detail text themselves; the actions on the right keep their own buttons.
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-                    .layoutPriority(1)
-                if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
-                Spacer(minLength: 6)
-                status
+            Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                HStack(spacing: 6) {
+                    Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                        .layoutPriority(1)
+                    if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
+                    Spacer(minLength: 6)
+                    status
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             HStack(spacing: 5) {
-                Text(row.detail)
-                    .font(.system(size: 12.5, design: row.kind == .approval ? .monospaced : .default))
-                    .foregroundStyle(row.kind.needsYou ? Color.white.opacity(0.85) : Island.secondary)
-                    .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                    Text(row.detail)
+                        .font(.system(size: 12.5, design: row.kind == .approval ? .monospaced : .default))
+                        .foregroundStyle(row.kind.needsYou ? Color.white.opacity(0.85) : Island.secondary)
+                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 trailing
             }
         }
@@ -397,7 +409,7 @@ struct SessionRow: View {
                 }
             case .input, .failed: openButton
             case .review:
-                Button(intent: MarkReviewedIntent(sessionId: row.id)) { Pill(title: "Reviewed", height: 24, stretch: false) }
+                EmptyView()
             case .working, .idle:
                 if row.subagentTotal > 0 {
                     let running = row.subagents > 0
@@ -416,9 +428,11 @@ struct SessionRow: View {
                     }
                 }
                 // Neutral until the window is filling up (amber > 65 %, red > 85 %).
-                let full = row.context > 0.65
-                Stat(value: "\(Int(row.context * 100))%", label: "context", tint: full ? Island.context(row.context) : nil) {
-                    Ring(fraction: row.context, tint: full ? Island.context(row.context) : Color.white.opacity(0.8))
+                if let ctx = row.context {
+                    let full = ctx > 0.65
+                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil) {
+                        Ring(fraction: ctx, tint: full ? Island.context(ctx) : Color.white.opacity(0.8))
+                    }
                 }
             }
         }
@@ -435,30 +449,45 @@ struct SessionRow: View {
 
 // MARK: - Footer
 
-/// One line: the two plan limits as short meters, and the pager when there is more than one page.
+/// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
+/// page.
 struct Footer: View {
     let state: NotchActivityState
     var body: some View {
-        HStack(spacing: 12) {
-            if let f = state.fiveHour { limit("5h", f) }
-            if let w = state.weekly { limit("7d", w) }
+        HStack(spacing: 10) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset) }
             Spacer(minLength: 0)
             if state.pages > 1 { Pager(state: state) }
         }
         .padding(.horizontal, 4)
     }
 
-    private func limit(_ label: String, _ f: Double) -> some View {
-        HStack(spacing: 5) {
+    private func limit(_ label: String, _ f: Double, _ reset: Date?) -> some View {
+        HStack(spacing: 4) {
             Text(label).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.16)).frame(width: 44, height: 5)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: 26, height: 5)
                 .overlay(alignment: .leading) {
-                    Capsule().fill(Island.quota(f)).frame(width: max(5, 44 * min(1, f)), height: 5)
+                    Capsule().fill(Island.quota(f)).frame(width: max(5, 26 * min(1, f)), height: 5)
                 }
-            Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85)).monospacedDigit()
+            Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
+            // No reset time means no window is running (nothing used since the last reset).
+            Text(reset.map { Island.resetLabel($0) } ?? "fresh").foregroundStyle(Island.tertiary)
         }
+        .monospacedDigit()
         .font(.system(size: 11, weight: .semibold))
         .fixedSize()
+    }
+}
+
+extension Island {
+    /// When a limit resets, as short as it reads: "6 PM" or "6:30 PM" today / within a day, "Tue 5 AM" beyond.
+    static func resetLabel(_ date: Date, now: Date = .now) -> String {
+        let f = DateFormatter()
+        let minute = Calendar.current.component(.minute, from: date)
+        let clock = minute == 0 ? "h a" : "h:mm a"
+        f.dateFormat = date.timeIntervalSince(now) < 20 * 3600 ? clock : "EEE " + clock
+        return f.string(from: date)
     }
 }
 
@@ -584,7 +613,7 @@ struct IslandIdle: View {
                 }
             Group {
                 if let reset, reset > .now {
-                    Text("Resets in ") + Text(reset, style: .relative)
+                    Text("Resets \(Island.resetLabel(reset)) · in ") + Text(reset, style: .relative)
                 } else {
                     Text(f == 0 ? "Not used yet" : "Reset time unknown")
                 }

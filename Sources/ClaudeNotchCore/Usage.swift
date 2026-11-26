@@ -61,14 +61,3 @@ public struct PriceTable: Codable, Sendable, Equatable {
         return t
     }
 }
-
-/// Known context windows by model id substring. Claude Code reports the real value in some
-/// versions; this is the fallback used for the context gauge.
-public func contextWindow(for model: String?, observedPeak: Int = 0) -> Int {
-    let m = (model ?? "").lowercased()
-    var w = 200_000
-    if m.contains("[1m]") || m.contains("1m") { w = 1_000_000 }
-    // If we have observed more than the assumed window, the window must be larger.
-    if observedPeak > w { w = 1_000_000 }
-    return w
-}

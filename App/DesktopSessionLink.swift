@@ -50,7 +50,9 @@ enum DesktopSessionLink {
     }
 
     private static func read(_ file: URL) -> Date? {
-        guard let data = try? Data(contentsOf: file), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let data = try? Data(contentsOf: file), let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
         return focusDate(obj)
     }
 

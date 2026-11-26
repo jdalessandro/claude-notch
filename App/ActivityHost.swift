@@ -49,10 +49,21 @@ final class ActivityHost {
             state: s, staleDate: Date().addingTimeInterval(Self.staleAfter), relevanceScore: Self.relevance(s))
     }
 
+    /// Updates go out strictly in order. Separate `Task`s (a push racing a beat) can reach the system out of order, and
+    /// an older state landing last leaves the island showing the wrong phase, for example no waveform while agents work.
+    private var sendChain: Task<Void, Never>?
+    private func send(_ run: @escaping @Sendable () async -> Void) {
+        let previous = sendChain
+        sendChain = Task {
+            await previous?.value; await run()
+        }
+    }
+
     /// Re-sends the current state so it does not go stale while the app is healthy.
     func heartbeat() {
         guard let activity, let last else { return }
-        Task { await activity.update(content(last)) }
+        let c = content(last)
+        send { await activity.update(c) }
     }
 
     /// The system (or the user, by dismissing it) can end the activity at any time; stop holding on to it.
@@ -118,9 +129,10 @@ final class ActivityHost {
         last = state
         let content = content(state)
         let key = alert.map { "\($0.title)|\($0.body)" }
-        Task {
-            if let alert, key != lastAlertKey {
-                lastAlertKey = key
+        let fire = alert != nil && key != lastAlertKey
+        if fire { lastAlertKey = key }
+        send {
+            if let alert, fire {
                 await activity.update(
                     content,
                     alertConfiguration: AlertConfiguration(
@@ -139,7 +151,7 @@ final class ActivityHost {
         s.pulse &+= 1
         last = s
         let content = content(s)
-        Task { await activity.update(content) }
+        send { await activity.update(content) }
     }
 
     func end() async {

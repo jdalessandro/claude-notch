@@ -46,8 +46,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var subagents: Int
         public var subagentTotal: Int
         public var tokens: Int
-        /// Context window used, 0...1 (rounded to whole percent to keep updates rare).
-        public var context: Double
+        /// Context window used, 0...1 (rounded to whole percent to keep updates rare); nil when the window is unknown.
+        public var context: Double?
         /// The live request this row can answer inline (Allow / Deny, or Answer for a question); nil when none.
         public var requestId: String?
         public var branch: String?
@@ -193,7 +193,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             return Row(
                 id: s.id, name: clip(s.displayTitle, 32), kind: k, detail: clip(detail(of: s, kind: k), 90),
                 since: k == .working ? s.workingSince : nil, subagents: s.runningSubagents, subagentTotal: s.subagents.count,
-                tokens: s.usage.work, context: (s.contextFraction * 100).rounded() / 100,
+                tokens: s.usage.work, context: s.contextFraction.map { ($0 * 100).rounded() / 100 },
                 requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil,
                 branch: s.displayBranch.map { clip($0, 22) }, linesAdded: s.linesAdded, linesRemoved: s.linesRemoved,
                 tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil)

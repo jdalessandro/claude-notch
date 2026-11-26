@@ -370,13 +370,15 @@ struct SessionCard: View {
 
     private var meta: some View {
         HStack(spacing: 8) {
-            HStack(spacing: 8) {
-                ContextBar(fraction: s.contextFraction).frame(width: 64, height: 4)
-                Text("\(Int(s.contextFraction * 100))% context")
+            if let f = s.contextFraction, let w = s.contextWindow {
+                HStack(spacing: 8) {
+                    ContextBar(fraction: f).frame(width: 64, height: 4)
+                    Text("\(Int(f * 100))% context")
+                }
+                .help(
+                    "Context window used: \(Fmt.tokens(s.contextTokens)) of \(Fmt.tokens(w)) tokens. "
+                        + "Claude Code compacts the conversation as this fills up.")
             }
-            .help(
-                "Context window used: \(Fmt.tokens(s.contextTokens)) of \(Fmt.tokens(s.exactContextWindow ?? s.contextWindow)) tokens. "
-                    + "Claude Code compacts the conversation as this fills up.")
             if s.linesAdded + s.linesRemoved > 0 {
                 HStack(spacing: 4) {
                     Text("+\(s.linesAdded)").foregroundStyle(.green.opacity(0.9))

@@ -154,8 +154,9 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
     // Usage (from transcript)
     public var usage = TokenUsage()
     public var contextTokens = 0
-    public var contextWindow = 200_000
-    /// Exact window size from the status line; overrides the inferred one.
+    /// Window size in tokens, or nil when neither the status line nor the model catalog knows it. Never guessed.
+    public var contextWindow: Int?
+    /// Exact window size reported by the status line; takes precedence over the catalog.
     public var exactContextWindow: Int?
     public var reportedCostUSD: Double?
     public var estimatedCostUSD: Double = 0
@@ -163,7 +164,9 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
     public var linesRemoved = 0
 
     public var costUSD: Double { reportedCostUSD ?? estimatedCostUSD }
-    public var contextFraction: Double { min(1, Double(contextTokens) / Double(max(1, contextWindow))) }
+    public var contextFraction: Double? {
+        contextWindow.map { min(1, Double(contextTokens) / Double(max(1, $0))) }
+    }
     /// A readable name for where the session runs: the repository for a Claude worktree, a friendly label for the
     /// app's scratch workspaces, otherwise the folder name.
     public var projectName: String {
@@ -184,6 +187,10 @@ public struct AgentSession: Sendable, Identifiable, Equatable {
 /// Pure reducer: hook events in, session list out. No I/O, so it is fully unit-testable.
 public struct SessionStore: Sendable {
     public private(set) var sessions: [String: AgentSession] = [:]
+    /// Window sizes the status line has told us about; consulted before any heuristic.
+    public var windowCache = ContextWindowCache()
+    /// Per-model windows from Claude's own model catalog; used when the status line hasn't reported for a session.
+    public var catalog = ModelCatalog()
     public init() {}
 
     /// Sessions sorted for display: urgent first, then most recently active.
@@ -411,7 +418,8 @@ public struct SessionStore: Sendable {
         s.usage = snap.usage
         if let m = snap.model { s.model = m }
         s.contextTokens = snap.contextTokens
-        s.contextWindow = s.exactContextWindow ?? contextWindow(for: s.model, observedPeak: snap.peakContextTokens)
+        if s.exactContextWindow == nil { s.exactContextWindow = windowCache.size(session: id) }
+        s.contextWindow = s.exactContextWindow ?? catalog.window(for: s.model)
         s.reportedCostUSD = snap.reportedCostUSD
         s.estimatedCostUSD = prices.cost(snap.usage, model: s.model)
         s.linesAdded = snap.linesAdded; s.linesRemoved = snap.linesRemoved
@@ -440,7 +448,9 @@ public struct SessionStore: Sendable {
     /// Synthetic numbers for `--demo` mode and UI previews.
     public mutating func setDemoUsage(_ id: String, ctxFraction: Double, cost: Double, tokens: Int) {
         guard var s = sessions[id] else { return }
-        s.contextWindow = 200_000; s.contextTokens = Int(ctxFraction * 200_000)
+        // The window comes from the real model catalog; if it's unavailable the demo shows no context gauge.
+        s.contextWindow = catalog.window(for: "claude-opus-5-5")
+        s.contextTokens = Int(ctxFraction * Double(s.contextWindow ?? 0))
         s.reportedCostUSD = cost
         s.usage = TokenUsage(input: tokens / 20, output: tokens / 10, cacheRead: tokens * 8 / 10, cacheWrite: tokens / 20)
         s.model = "claude-opus-5-5"; s.gitBranch = "main"; s.workingSince = s.status == .working ? Date().addingTimeInterval(-74) : nil

@@ -25,7 +25,9 @@ actor TranscriptHub {
 
 @MainActor @Observable
 final class AppModel {
-    var store = SessionStore()
+    var store: SessionStore = {
+        var s = SessionStore(); s.windowCache = ContextWindowCache.load(); s.catalog = ModelCatalog.load(); return s
+    }()
 
     init(defaults: UserDefaults = .standard) { settings = AppSettings(defaults: defaults) }
 
@@ -149,6 +151,8 @@ final class AppModel {
         }
         if case .number(let n)? = p.contextWindow?["context_window_size"], let sid = p.sessionId {
             store.setExactContextWindow(Int(n), for: sid)
+            store.windowCache.record(size: Int(n), session: sid)
+            store.windowCache.save()
         }
     }
 
@@ -236,6 +240,7 @@ final class AppModel {
     func tick() async {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
+        if tickCount % 150 == 0 { store.catalog = ModelCatalog.load() }  // every ~5 min: Claude refreshes its model catalog
         if tickCount % 30 == 0 { island.heartbeat() }  // every ~60 s: keeps the activity from reading as stale
         let before = Set(store.sessions.keys)
         // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
@@ -251,6 +256,8 @@ final class AppModel {
         for s in store.active {
             if let p = s.transcriptPath { await refreshTranscript(id: s.id, path: p) }
         }
+        // Looking at a finished session in Claude Desktop counts as reviewing it.
+        store.markViewed { DesktopSessionLink.lastFocused(forCLISession: $0) }
         reconcile()
     }
 
@@ -276,8 +283,6 @@ final class AppModel {
     private var seenAttention: Set<String> = []
     /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
     /// needs the user.
-        // Looking at a finished session in Claude Desktop counts as reviewing it.
-        store.markViewed { DesktopSessionLink.lastFocused(forCLISession: $0) }
     private var islandPage = 0
     /// Pages turn by themselves every `pageInterval`. The island can't report hover, so any tap on it (and anything new
     /// needing the user) holds the current page for `pageHold` instead.
@@ -347,7 +352,6 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .reviewed: dismiss(sessionId)
         case .nextPage, .previousPage: break
         }
     }
