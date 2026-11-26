@@ -105,7 +105,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }
 
     /// Session cards per page, and per page under a request card (which is tall).
-    public static let maxRows = 2
+    public static let maxRows = 3
     public static let maxRowsWithPrompt = 1
     public static let maxOptions = 4
     /// Hard ceiling for the encoded state; ActivityKit rejects larger payloads.

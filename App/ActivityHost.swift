@@ -71,6 +71,8 @@ final class ActivityHost {
     private var lastAlertKey: String?
 
     var isLive: Bool { activity != nil }
+    /// What the island shows right now.
+    var current: NotchActivityState? { last }
     var enabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
     /// Ends every activity left over from an earlier run. The system can keep reporting one as `active` while it is no

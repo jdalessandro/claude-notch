@@ -100,7 +100,10 @@ final class AppModel {
             self.reconcile()
         }
         beatTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.island.beat() }
+            Task { @MainActor in
+                self?.island.beat()
+                self?.autoPage()
+            }
         }
         if demo {
             runDemo()
@@ -274,6 +277,29 @@ final class AppModel {
     /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
     /// needs the user.
     private var islandPage = 0
+    /// Pages turn by themselves every `pageInterval`. The island can't report hover, so any tap on it (and anything new
+    /// needing the user) holds the current page for `pageHold` instead.
+    private var lastPageTurn = Date()
+    private var pageHoldUntil = Date.distantPast
+    private static let pageInterval: TimeInterval = 6
+    private static let pageHold: TimeInterval = 20
+
+    private func holdPage() {
+        pageHoldUntil = Date().addingTimeInterval(Self.pageHold)
+        lastPageTurn = Date()
+    }
+
+    /// Called every second: turns to the next page when there is more than one and nobody is interacting.
+    private func autoPage() {
+        let now = Date()
+        guard let st = island.current, st.pages > 1, now >= pageHoldUntil,
+            now.timeIntervalSince(lastPageTurn) >= Self.pageInterval
+        else { return }
+        lastPageTurn = now
+        islandPage += 1
+        reconcile()
+        activityTrace("auto page \(islandPage + 1)/\(st.pages)")
+    }
 
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
@@ -288,6 +314,7 @@ final class AppModel {
             alert = (lead.projectName, lead.pending?.summary ?? lead.activity, prefs.soundEnabled)
         }
         seenAttention = keys
+        if alert != nil { holdPage() }
         if alert != nil, state.page != 0 {
             islandPage = 0
             state = NotchActivityState.make(sessions: store.active, quota: quotaNow, page: 0)
@@ -301,8 +328,10 @@ final class AppModel {
 
     /// Answers an Allow/Deny/Open/Done tap from the island. A tap for a request that is no longer the live one is ignored.
     func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
+        holdPage()  // the user is using the island: stop turning pages under them
         switch action {
         case .nextPage, .previousPage:
+            activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
             reconcile()
             return
