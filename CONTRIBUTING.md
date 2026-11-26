@@ -19,7 +19,9 @@ occasionally fails with `plugin for module 'TestingMacros' not found`. That is a
 |---|---|
 | `Sources/ClaudeNotchCore` | Pure logic with no UI: events, session state machine, transcript/usage parsing, IPC, installer, preferences. **Everything testable lives here.** |
 | `Sources/claude-notch-hook` | The forwarder Claude Code invokes. Must never block or break a session. |
-| `Sources/ClaudeNotch` | The app: AppKit panel, SwiftUI views, settings window. |
+| `App/` | The host app: `AppModel`, Live Activity host, *Sessions* window, settings, menu-bar item. |
+| `Shared/` | Code compiled into both the app and the widget: island views, App Intents, activity attributes. |
+| `Widget/` | The widget extension that draws the Live Activity. |
 | `Tests/ClaudeNotchCoreTests` | Swift Testing suites, one file per area. |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow and design rules.

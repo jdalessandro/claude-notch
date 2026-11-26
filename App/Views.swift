@@ -25,31 +25,6 @@ enum Metrics {
 
 // MARK: - Shared pieces
 
-/// Claude tile: tinted by status, with a count badge when something needs you.
-struct AgentTile: View {
-    let status: AgentStatus
-    let size: CGFloat
-    var badge: Int = 0
-    var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-            .fill(LinearGradient(colors: [status.color, status.color.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .frame(width: size, height: size)
-            .overlay(
-                Image(systemName: status == .done ? "checkmark" : "sparkle")
-                    .font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(.white.opacity(0.95))
-            )
-            .overlay(alignment: .topTrailing) {
-                if badge > 0 {
-                    Text("\(badge)").font(.system(size: max(8, size * 0.3), weight: .bold, design: .rounded))
-                        .padding(.horizontal, 4).frame(minWidth: size * 0.42, minHeight: size * 0.42)
-                        .background(Capsule().fill(.red).overlay(Capsule().strokeBorder(.black, lineWidth: 1.5)))
-                        .offset(x: size * 0.18, y: -size * 0.18)
-                }
-            }
-    }
-}
-
-/// Animated waveform: moves while Claude works, pulses amber when it needs you, rests otherwise.
 struct ChipButton: View {
     let title: String
     var tint: Color

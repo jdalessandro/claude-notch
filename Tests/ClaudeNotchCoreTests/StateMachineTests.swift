@@ -30,7 +30,7 @@ import Testing
             })
         #expect(eff == .notify(sessionId: "s1", kind: .permission))
         #expect(s.sessions["s1"]?.pending?.canAnswer == true)
-        #expect(s.attentionCount == 1)
+        #expect(s.sessions["s1"]?.status.needsAttention == true && s.sessions["s1"]?.unseen == true)
         // Another tool starting in parallel must not make a held approval vanish.
         s.apply(
             ev("PreToolUse", t: 5) {
@@ -150,7 +150,7 @@ import Testing
         #expect(s.apply(ev("StopFailure") { $0.message = "rate limited" }) == .notify(sessionId: "s1", kind: .failed))
         #expect(s.sessions["s1"]?.attentionMessage == "rate limited")
         s.markSeen("s1")
-        #expect(s.attentionCount == 0)
+        #expect(s.sessions["s1"]?.unseen == false)
     }
 
     @Test func summaries() {
