@@ -8,6 +8,8 @@ import SwiftUI
 // no outlines, generous continuous corners.
 
 enum Island {
+    /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
+    static let inset: CGFloat = 17
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
@@ -16,7 +18,10 @@ enum Island {
     static let secondary = Color.white.opacity(0.55)
     static let tertiary = Color.white.opacity(0.35)
     static let surface = Color.white.opacity(0.08)
-    static let panelRadius: CGFloat = 22
+    /// Cards inside the island. Near-concentric with the island's ~22pt corner across its ~16pt margin (strictly
+    /// concentric would be ~6pt, which reads boxy at card size); nested boxes step down again (`innerRadius`).
+    static let panelRadius: CGFloat = 12
+    static let innerRadius: CGFloat = 8
 
     static func quota(_ f: Double) -> Color { f >= 0.9 ? red : f >= 0.75 ? amber : blue }
     static func context(_ f: Double) -> Color { f > 0.85 ? red : f > 0.65 ? amber : coral }
@@ -310,7 +315,7 @@ struct PromptPanel: View {
         Text(p.text).font(.system(size: 12.5, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.92))
             .lineLimit(2).padding(.horizontal, 10).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.55)))
+            .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
     @ViewBuilder private var actions: some View {
@@ -374,7 +379,7 @@ struct SessionRow: View {
         .padding(.horizontal, 12).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
                 .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface))
     }
 
@@ -449,34 +454,94 @@ struct SessionRow: View {
 
 // MARK: - Footer
 
-/// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
-/// page.
+/// One line: the two plan limits as short meters with when each resets, a refresh icon, and the pager when there is
+/// more than one page.
 struct Footer: View {
     let state: NotchActivityState
     var body: some View {
-        HStack(spacing: 10) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset) }
-            Spacer(minLength: 0)
-            if state.pages > 1 { Pager(state: state) }
+        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 10pt
+        // stub, which still reads as a meter), and only then do the limits move onto their own line above the pager.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                limits(bar: 40)
+                Spacer(minLength: 0)
+                trailing
+            }
+            HStack(spacing: 10) {
+                limits(bar: 24)
+                Spacer(minLength: 0)
+                trailing
+            }
+            HStack(spacing: 6) {
+                limits(bar: 10, spacing: 8)
+                Spacer(minLength: 0)
+                trailing
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                limits(bar: 40)
+                HStack {
+                    Spacer(minLength: 0)
+                    trailing
+                }
+            }
         }
         .padding(.horizontal, 4)
     }
 
-    private func limit(_ label: String, _ f: Double, _ reset: Date?) -> some View {
-        HStack(spacing: 4) {
+    /// The pager (when there is more than one page), then the refresh icon at the very end of the row: it re-reads
+    /// both limits.
+    private var trailing: some View {
+        HStack(spacing: 8) {
+            if state.pages > 1 { Pager(state: state).fixedSize() }
+            if state.fiveHour != nil || state.weekly != nil {
+                Button(intent: RefreshQuotaIntent()) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.8)).frame(width: 24, height: 24)
+                        .background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func limits(bar: CGFloat, spacing: CGFloat = 12) -> some View {
+        HStack(spacing: spacing) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar) }
+        }
+    }
+
+    /// "5h ▬▬ 44% ⌛2h": the window, a bar, the percentage, and how long until it resets in one short unit.
+    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat) -> some View {
+        HStack(spacing: 5) {
             Text(label).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.16)).frame(width: 26, height: 5)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar, height: 5)
                 .overlay(alignment: .leading) {
-                    Capsule().fill(Island.quota(f)).frame(width: max(5, 26 * min(1, f)), height: 5)
+                    Capsule().fill(Island.quota(f)).frame(width: max(5, bar * min(1, f)), height: 5)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
-            // No reset time means no window is running (nothing used since the last reset).
-            Text(reset.map { Island.resetLabel($0) } ?? "fresh").foregroundStyle(Island.tertiary)
+            if let reset, let left = Island.shortUntil(reset) {
+                HStack(spacing: 1) {
+                    Image(systemName: "hourglass").font(.system(size: 8, weight: .bold))
+                    Text(left)
+                }
+                .foregroundStyle(Island.tertiary)
+            }
         }
         .monospacedDigit()
         .font(.system(size: 11, weight: .semibold))
         .fixedSize()
+    }
+}
+
+extension Island {
+    /// Time until `date` in one short unit: "45m", "3h", "4d". Nil once it has passed.
+    static func shortUntil(_ date: Date, now: Date = .now) -> String? {
+        let s = date.timeIntervalSince(now)
+        guard s > 0 else { return nil }
+        if s < 3600 { return "\(max(1, Int(s / 60)))m" }
+        if s < 86_400 { return "\(Int((s / 3600).rounded()))h" }
+        return "\(Int((s / 86_400).rounded()))d"
     }
 }
 
@@ -526,12 +591,40 @@ struct IslandTitle: View {
     let state: NotchActivityState
     var body: some View {
         HStack(spacing: 6) {
-            Text(state.sessions == 0 ? "No active sessions" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+            IslandHeadline(state: state)
             Spacer(minLength: 6)
+            IslandBadges(state: state)
+        }
+    }
+}
+
+/// "N agents". On the island it sits in the leading region, up beside the cutout.
+struct IslandHeadline: View {
+    let state: NotchActivityState
+    var body: some View {
+        Text(state.sessions == 0 ? "All quiet" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
+            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+            .fixedSize()
+    }
+}
+
+/// What needs you, what is working, how many subagents run. On the island it sits in the trailing region. The badges
+/// are fixed-size, so the least urgent ones drop out when there isn't room for all of them.
+struct IslandBadges: View {
+    let state: NotchActivityState
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            badges(working: true, subagents: true)
+            badges(working: true, subagents: false)
+            badges(working: false, subagents: false)
+        }
+    }
+
+    private func badges(working: Bool, subagents: Bool) -> some View {
+        HStack(spacing: 6) {
             if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
-            if state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
-            if state.subagentsRunning > 0 {
+            if working, state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
+            if subagents, state.subagentsRunning > 0 {
                 Badge(
                     "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
                     icon: "point.3.connected.trianglepath.dotted")
@@ -544,10 +637,10 @@ struct IslandTitle: View {
 struct IslandBody: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             if let p = state.prompt { PromptPanel(p: p) }
             ForEach(state.rows) { SessionRow(row: $0) }
-            Footer(state: state).padding(.top, 2)
+            Footer(state: state).padding(.top, 4)
         }
     }
 }
@@ -574,25 +667,32 @@ struct IslandExpanded: View {
 /// each resets.
 struct IslandIdle: View {
     let state: NotchActivityState
+    /// False on the island, where "All quiet" already sits up beside the cutout (and the compact view shows the logo).
+    var header = true
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Artwork(size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("All quiet").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                    Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+        VStack(alignment: .leading, spacing: header ? 12 : 8) {
+            if !header {
+                Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+                    .lineLimit(1).padding(.horizontal, 4)
+            } else {
+                HStack(spacing: 12) {
+                    Artwork(size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("All quiet").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+                    }
+                    .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .lineLimit(1)
-                Spacer(minLength: 0)
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
             if state.fiveHour != nil || state.weekly != nil {
                 HStack(alignment: .top, spacing: 16) {
                     if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset) }
                     if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Island.surface))
+                .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
             }
         }
     }

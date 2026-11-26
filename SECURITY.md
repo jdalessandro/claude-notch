@@ -2,7 +2,18 @@
 
 ## Trust model
 
-Claude Notch is a local, single-user tool. It has no network code and sends nothing off the machine.
+Claude Notch is a local, single-user tool. It makes exactly one kind of network request, described below; nothing
+else leaves the machine.
+
+- **Plan limits (Pro/Max only)**: every ~5 minutes, and when you tap the refresh icon on the island, the app asks
+  `https://api.anthropic.com/api/oauth/usage` for your 5-hour and weekly limit percentages. This is the request
+  Claude Code's `/usage` makes; it is not a documented API, so failures just keep the last-known numbers.
+  - It authenticates with **Claude Code's own OAuth login**, read from the `Claude Code-credentials` keychain item
+    (macOS asks you once to allow this). The token is sent only to Anthropic and is never logged.
+  - When that login has expired, the app **renews it with the refresh token and writes the new credentials back to
+    the same keychain item**. Renewal rotates the refresh token, so if Claude Code renews at the same moment one of
+    them can end up with a stale token and Claude Code may ask you to sign in again.
+  - Nothing is sent on API (pay-as-you-go) billing, where there are no plan limits.
 
 - **Hooks** run as you whenever Claude Code fires an event. `claude-notch-hook` only reads the event JSON from stdin
   and forwards it to the app over a Unix socket. If the app is not running it exits silently, and it never blocks or
