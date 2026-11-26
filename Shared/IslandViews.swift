@@ -9,7 +9,7 @@ import SwiftUI
 
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
-    static let inset: CGFloat = 7
+    static let inset: CGFloat = 17
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
@@ -459,8 +459,8 @@ struct SessionRow: View {
 struct Footer: View {
     let state: NotchActivityState
     var body: some View {
-        // Bars are always shown. When the pager leaves too little room the bars get shorter, then the limits move
-        // onto their own line above the pager.
+        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 10pt
+        // stub, which still reads as a meter), and only then do the limits move onto their own line above the pager.
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 limits(bar: 40)
@@ -469,6 +469,11 @@ struct Footer: View {
             }
             HStack(spacing: 10) {
                 limits(bar: 24)
+                Spacer(minLength: 0)
+                trailing
+            }
+            HStack(spacing: 6) {
+                limits(bar: 10, spacing: 8)
                 Spacer(minLength: 0)
                 trailing
             }
@@ -499,8 +504,8 @@ struct Footer: View {
         }
     }
 
-    private func limits(bar: CGFloat) -> some View {
-        HStack(spacing: 12) {
+    private func limits(bar: CGFloat, spacing: CGFloat = 12) -> some View {
+        HStack(spacing: spacing) {
             if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar) }
             if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar) }
         }
