@@ -20,11 +20,7 @@ struct ClaudeNotchActivity: Widget {
                 // The leading / trailing regions sit up beside the cutout, detached from the content, and the compact
                 // island already shows the logo and waveform; so the expanded view is one column under the cutout.
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        IslandTitle(state: s).padding(.horizontal, 4)
-                        IslandBody(state: s)
-                    }
-                    .padding(.horizontal, 2).opacity(ctx.isStale ? 0.6 : 1)
+                    IslandExpanded(state: s).padding(.horizontal, 2).opacity(ctx.isStale ? 0.6 : 1)
                 }
             } compactLeading: {
                 IslandCompactLeading(state: s)

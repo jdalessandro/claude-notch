@@ -467,14 +467,75 @@ struct IslandBody: View {
     }
 }
 
-/// The whole expanded layout in one view: used for the banner presentation and for snapshots.
+/// The expanded content: the idle view when no session is active, otherwise the header and the sessions.
+/// Used by the island's bottom region, the banner presentation and snapshots.
 struct IslandExpanded: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            IslandTitle(state: state).padding(.horizontal, 4)
-            IslandBody(state: state)
+        if state.sessions == 0 {
+            IslandIdle(state: state)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                IslandTitle(state: state).padding(.horizontal, 4)
+                IslandBody(state: state)
+            }
         }
+    }
+}
+
+// MARK: - Idle
+
+/// Nothing running: the logo with a short status, and the plan limits (the one thing worth checking now) with when
+/// each resets.
+struct IslandIdle: View {
+    let state: NotchActivityState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Artwork(size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("All quiet").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+                }
+                .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            if state.fiveHour != nil || state.weekly != nil {
+                HStack(alignment: .top, spacing: 16) {
+                    if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset) }
+                    if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Island.surface))
+            }
+        }
+    }
+
+    private func meter(_ label: String, _ f: Double, _ reset: Date?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Island.secondary)
+                Spacer(minLength: 4)
+                Text("\(Int((f * 100).rounded()))%").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                    .monospacedDigit()
+            }
+            Capsule().fill(Color.white.opacity(0.16)).frame(height: 6)
+                .overlay(alignment: .leading) {
+                    GeometryReader { g in
+                        Capsule().fill(Island.quota(f)).frame(width: max(6, g.size.width * min(1, f)))
+                    }
+                }
+            Group {
+                if let reset, reset > .now {
+                    Text("Resets in ") + Text(reset, style: .relative)
+                } else {
+                    Text(f == 0 ? "Not used yet" : "Reset time unknown")
+                }
+            }
+            .font(.system(size: 11)).foregroundStyle(Island.tertiary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

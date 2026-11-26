@@ -97,6 +97,9 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     public var weekly: Double?
     /// Waveform beat, advanced by the app about once a second while agents run (see `isAnimated`).
     public var pulse = 0
+    /// When the 5-hour and weekly windows reset; nil when unknown.
+    public var fiveHourReset: Date?
+    public var weeklyReset: Date?
     /// The session list is paged (a Live Activity can't scroll): which page is shown, of how many.
     public var page = 0
     public var pages = 1
@@ -171,6 +174,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             var s = NotchActivityState.idle
             s.fiveHour = quota?.fiveHour?.fraction
             s.weekly = quota?.sevenDay?.fraction
+            s.fiveHourReset = quota?.fiveHour?.resetsAt
+            s.weeklyReset = quota?.sevenDay?.resetsAt
             return s
         }
         let needs = active.filter { $0.status.needsAttention || $0.needsReview }
@@ -204,7 +209,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
-            pulse: 0, page: current, pages: pages)
+            pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
+            pages: pages)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

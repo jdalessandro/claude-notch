@@ -8,7 +8,9 @@ import SwiftUI
 enum IslandSnapshots {
     static func render(sessions: [AgentSession], to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let quota = QuotaState(fiveHour: QuotaWindow(usedPercent: 82), sevenDay: QuotaWindow(usedPercent: 12))
+        let quota = QuotaState(
+            fiveHour: QuotaWindow(usedPercent: 82, resetsAt: Date().addingTimeInterval(2 * 3600 + 5 * 60)),
+            sevenDay: QuotaWindow(usedPercent: 12, resetsAt: Date().addingTimeInterval(5 * 86_400)))
         let question = NotchActivityState.make(sessions: sessions, quota: quota)
         // Without the question, the subagent's permission request becomes the featured card.
         let permission = NotchActivityState.make(sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota)
@@ -18,7 +20,7 @@ enum IslandSnapshots {
         let page2 = NotchActivityState.make(sessions: sessions.filter { $0.pending == nil }, quota: quota, page: 1)
         for (name, st) in [
             ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
-            ("expanded-page-2", page2),
+            ("expanded-page-2", page2), ("expanded-idle", idle),
         ] {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))
         }

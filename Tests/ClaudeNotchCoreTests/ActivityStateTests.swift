@@ -15,6 +15,13 @@ import Testing
         #expect(st.phase == .idle && st.rows.isEmpty && st.prompt == nil)
     }
 
+    @Test func idleStateKeepsLimitsAndResets() {
+        let reset = Date().addingTimeInterval(3_600)
+        let quota = QuotaState(fiveHour: QuotaWindow(usedPercent: 40, resetsAt: reset), sevenDay: QuotaWindow(usedPercent: 17))
+        let st = NotchActivityState.make(sessions: [], quota: quota)
+        #expect(st.fiveHour == 0.4 && st.fiveHourReset == reset && st.weekly == 0.17 && st.weeklyReset == nil)
+    }
+
     @Test func workingSessionsSummarize() {
         let s = store {
             _ = $0.apply(ev("UserPromptSubmit", sid: "a") { $0.prompt = "go" })
