@@ -15,7 +15,11 @@ enum IslandSnapshots {
         let working = NotchActivityState.make(
             sessions: sessions.filter { $0.status == .working || $0.status == .compacting }, quota: quota)
         let idle = NotchActivityState.make(sessions: [], quota: quota)
-        for (name, st) in [("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working)] {
+        let page2 = NotchActivityState.make(sessions: sessions.filter { $0.pending == nil }, quota: quota, page: 1)
+        for (name, st) in [
+            ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
+            ("expanded-page-2", page2),
+        ] {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))
         }
         for (name, st) in [("compact-needs-you", question), ("compact-working", working), ("compact-idle", idle)] {

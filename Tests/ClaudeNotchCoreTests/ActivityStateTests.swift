@@ -96,8 +96,21 @@ import Testing
         }
         let quota = QuotaState(fiveHour: QuotaWindow(usedPercent: 82), sevenDay: QuotaWindow(usedPercent: 12))
         let st = NotchActivityState.make(sessions: s.active, quota: quota)
-        #expect(st.rows.count == NotchActivityState.maxRows && st.more == 3)
+        #expect(st.rows.count == NotchActivityState.maxRows && st.more == 6 - NotchActivityState.maxRows)
+        #expect(st.pages == 3 && st.page == 0)
         #expect(st.fiveHour == 0.82 && st.weekly == 0.12)
+    }
+
+    @Test func pagesShowEverySessionOnceAndWrap() {
+        let s = store { st in
+            for i in 0..<5 { _ = st.apply(ev("UserPromptSubmit", sid: "s\(i)") { $0.prompt = "go" }) }
+        }
+        let pages = (0..<3).map { NotchActivityState.make(sessions: s.active, quota: nil, page: $0) }
+        #expect(pages.map(\.pages) == [3, 3, 3] && pages.map(\.page) == [0, 1, 2])
+        let ids = pages.flatMap { $0.rows.map(\.id) }
+        #expect(ids.count == 5 && Set(ids).count == 5)
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, page: 3).page == 0)
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, page: -1).page == 2)
     }
 
     @Test func stateStaysWithinTheByteBudgetEvenWithHugeText() {

@@ -88,6 +88,7 @@ final class AppModel {
     private var prices = PriceTable.load(from: Paths.pricingURL)
     private var server: NotchServer?
     private var timer: Timer?
+    private var beatTimer: Timer?
 
     // MARK: lifecycle
 
@@ -97,6 +98,9 @@ final class AppModel {
             // The approval mode lives in settings.json, so changing it means rewriting the hook entry.
             if old.approveFromIsland != new.approveFromIsland, self.hooksInstalled { self.installHooks() }
             self.reconcile()
+        }
+        beatTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.island.beat() }
         }
         if demo {
             runDemo()
@@ -267,12 +271,15 @@ final class AppModel {
     }
 
     private var seenAttention: Set<String> = []
+    /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
+    /// needs the user.
+    private var islandPage = 0
 
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
         if snapshotOnly { return }
-        let state = NotchActivityState.make(sessions: store.active, quota: quotaNow)
+        var state = NotchActivityState.make(sessions: store.active, quota: quotaNow, page: islandPage)
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
         let keys = Set(waiting.map(key))
@@ -281,6 +288,12 @@ final class AppModel {
             alert = (lead.projectName, lead.pending?.summary ?? lead.activity, prefs.soundEnabled)
         }
         seenAttention = keys
+        if alert != nil, state.page != 0 {
+            islandPage = 0
+            state = NotchActivityState.make(sessions: store.active, quota: quotaNow, page: 0)
+        } else {
+            islandPage = state.page  // keep it in range as sessions come and go
+        }
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -288,6 +301,13 @@ final class AppModel {
 
     /// Answers an Allow/Deny/Open/Done tap from the island. A tap for a request that is no longer the live one is ignored.
     func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
+        switch action {
+        case .nextPage, .previousPage:
+            islandPage += action == .nextPage ? 1 : -1
+            reconcile()
+            return
+        default: break
+        }
         guard let s = store.sessions[sessionId] else { return }
         activityTrace("intent \(action) answerable=\(s.isAnswerable(requestId: requestId))")
         switch action {
@@ -297,6 +317,7 @@ final class AppModel {
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
         case .reviewed: dismiss(sessionId)
+        case .nextPage, .previousPage: break
         }
     }
 

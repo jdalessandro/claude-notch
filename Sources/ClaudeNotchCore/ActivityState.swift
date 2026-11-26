@@ -50,6 +50,12 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var context: Double
         /// The live request this row can answer inline (Allow / Deny, or Answer for a question); nil when none.
         public var requestId: String?
+        public var branch: String?
+        public var linesAdded: Int
+        public var linesRemoved: Int
+        /// The tool a pending request is for ("Bash"), and whether a subagent asked.
+        public var tool: String?
+        public var fromSubagent: Bool
     }
 
     /// The most urgent request, shown as a card: a tool permission (Allow / Deny) or Claude asking a question.
@@ -89,10 +95,18 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// Used fraction (0...1) of the 5-hour and weekly plan windows; nil when unknown.
     public var fiveHour: Double?
     public var weekly: Double?
+    /// Waveform beat, advanced by the app about once a second while agents run (see `isAnimated`).
+    public var pulse = 0
+    /// The session list is paged (a Live Activity can't scroll): which page is shown, of how many.
+    public var page = 0
+    public var pages = 1
 
-    public static let maxRows = 3
-    /// Rows shown under a prompt card, which is tall.
-    public static let maxRowsWithPrompt = 2
+    /// Whether the waveform has bars to move.
+    public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }
+
+    /// Session cards per page, and per page under a request card (which is tall).
+    public static let maxRows = 2
+    public static let maxRowsWithPrompt = 1
     public static let maxOptions = 4
     /// Hard ceiling for the encoded state; ActivityKit rejects larger payloads.
     public static let byteBudget = 3_500
@@ -119,13 +133,16 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
 
     /// The row's second line, as the old compact view phrased it.
     static func detail(of s: AgentSession, kind k: Kind) -> String {
+        // Badges carry the kind, tool and subagent, so the text is only the substance: the command, the question,
+        // the result.
         if let p = s.pending {
-            return p.isQuestion ? "Claude asks: " + (p.question?.text ?? p.summary) : (p.agentType == nil ? "" : "↳ ") + p.summary
+            if let q = p.question { return q.text }
+            return p.summary.hasPrefix(p.toolName + ": ") ? String(p.summary.dropFirst(p.toolName.count + 2)) : p.summary
         }
         switch k {
         case .input, .failed: return Fmt.plainText(s.attentionMessage ?? s.activity)
-        case .review: return Fmt.plainText(s.lastMessage ?? "Done")
-        case .idle: return "Idle"
+        case .review: return Fmt.plainText(s.lastMessage ?? "Finished")
+        case .idle: return s.lastMessage.map(Fmt.plainText) ?? "Nothing running"
         default: return s.activity
         }
     }
@@ -147,7 +164,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
-        sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows
+        sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0
     ) -> NotchActivityState {
         let active = sessions.filter { $0.status != .ended }
         guard !active.isEmpty else {
@@ -163,13 +180,18 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         let prompt = featured.flatMap(prompt(for:))
         let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
         let rest = active.filter { $0.id != featured?.id }
-        let rows = rest.prefix(limit).map { s -> Row in
+        // Pages wrap around, so "next" on the last page returns to the first.
+        let pages = max(1, (rest.count + limit - 1) / limit)
+        let current = ((page % pages) + pages) % pages
+        let rows = rest.dropFirst(current * limit).prefix(limit).map { s -> Row in
             let k = kind(of: s)
             return Row(
                 id: s.id, name: clip(s.displayTitle, 32), kind: k, detail: clip(detail(of: s, kind: k), 90),
                 since: k == .working ? s.workingSince : nil, subagents: s.runningSubagents, subagentTotal: s.subagents.count,
                 tokens: s.usage.work, context: (s.contextFraction * 100).rounded() / 100,
-                requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil)
+                requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil,
+                branch: s.displayBranch.map { clip($0, 22) }, linesAdded: s.linesAdded, linesRemoved: s.linesRemoved,
+                tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil)
         }
         let phase: Phase = !needs.isEmpty ? .needsYou : (!working.isEmpty ? .working : .done)
         let headline: String =
@@ -181,7 +203,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         return NotchActivityState(
             phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
-            more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction)
+            more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
+            pulse: 0, page: current, pages: pages)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

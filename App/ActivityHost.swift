@@ -110,6 +110,8 @@ final class ActivityHost {
     /// Pushes a new state. `alert` re-expands the island (used when something new needs the user).
     func push(_ state: NotchActivityState, alert: (title: String, body: String, sound: Bool)? = nil) {
         guard let activity else { return }
+        var state = state
+        state.pulse = last?.pulse ?? 0  // the beat is the host's, not the reducer's
         if state == last, alert == nil { return }
         last = state
         let content = content(state)
@@ -126,6 +128,16 @@ final class ActivityHost {
                 await activity.update(content)
             }
         }
+    }
+
+    /// One waveform beat: re-sends the current state with the next `pulse`, which the widget animates. Only while
+    /// something runs, so an idle island costs nothing.
+    func beat() {
+        guard let activity, var s = last, s.isAnimated else { return }
+        s.pulse &+= 1
+        last = s
+        let content = content(s)
+        Task { await activity.update(content) }
     }
 
     func end() async {

@@ -5,7 +5,7 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, deny, open, reviewed }
+    enum Action: Sendable { case allow, deny, open, reviewed, nextPage, previousPage }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -55,6 +55,18 @@ struct MarkReviewedIntent: LiveActivityIntent {
     init(sessionId: String) { self.sessionId = sessionId }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(.reviewed, sessionId, "")
+        return .result()
+    }
+}
+
+/// Pages through the island's session list (a Live Activity can't scroll). The app owns the page number.
+struct PageIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Change page"
+    @Parameter(title: "Forward") var forward: Bool
+    init() {}
+    init(forward: Bool) { self.forward = forward }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "")
         return .result()
     }
 }
