@@ -34,6 +34,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         case approval, question, input, failed, review, working, idle
     }
 
+    /// One session line under the featured prompt.
     public struct Row: Codable, Hashable, Sendable, Identifiable {
         public var id: String
         public var name: String
@@ -41,40 +42,64 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var detail: String
         /// When the current turn started, for a system-updated timer. Nil when not working.
         public var since: Date?
+        /// Running subagents, and all subagents this session has started.
         public var subagents: Int
+        public var subagentTotal: Int
+        public var tokens: Int
+        /// Context window used, 0...1 (rounded to whole percent to keep updates rare).
+        public var context: Double
+        /// The live request this row can answer inline (Allow / Deny, or Answer for a question); nil when none.
+        public var requestId: String?
     }
 
-    public struct Approval: Codable, Hashable, Sendable {
+    /// The most urgent request, shown as a card: a tool permission (Allow / Deny) or Claude asking a question.
+    public struct Prompt: Codable, Hashable, Sendable {
         public var sessionId: String
         public var requestId: String
-        public var project: String
+        public var session: String
         public var tool: String
-        public var command: String
-        public var fromSubagent: Bool
+        /// The command / file for a permission, the question text for a question.
+        public var text: String
+        public var isQuestion: Bool
+        public var header: String?
+        /// The question's choices (read-only: the answer is given in Claude).
+        public var options: [String]
+        public var moreOptions: Int
+        public var multiSelect: Bool
+        /// Further questions in the same tool call.
+        public var moreQuestions: Int
+        /// The subagent type when a subagent asked.
+        public var subagent: String?
+        /// False when no hook is waiting for our answer: only "Open" is offered.
+        public var canAnswer: Bool
     }
 
     public enum Phase: String, Codable, Sendable { case idle, working, needsYou, done }
 
     public var phase: Phase
     public var headline: String
+    public var sessions: Int
     public var needsYou: Int
     public var working: Int
     public var subagentsRunning: Int
+    public var prompt: Prompt?
     public var rows: [Row]
-    /// Sessions that did not fit in `rows`.
+    /// Sessions that did not fit (neither the prompt nor `rows`).
     public var more: Int
-    public var approval: Approval?
     /// Used fraction (0...1) of the 5-hour and weekly plan windows; nil when unknown.
     public var fiveHour: Double?
     public var weekly: Double?
 
     public static let maxRows = 3
+    /// Rows shown under a prompt card, which is tall.
+    public static let maxRowsWithPrompt = 2
+    public static let maxOptions = 4
     /// Hard ceiling for the encoded state; ActivityKit rejects larger payloads.
     public static let byteBudget = 3_500
 
     public static let idle = NotchActivityState(
-        phase: .idle, headline: "Idle", needsYou: 0, working: 0, subagentsRunning: 0, rows: [], more: 0, approval: nil,
-        fiveHour: nil, weekly: nil)
+        phase: .idle, headline: "Idle", sessions: 0, needsYou: 0, working: 0, subagentsRunning: 0, prompt: nil, rows: [],
+        more: 0, fiveHour: nil, weekly: nil)
 
     static func clip(_ s: String, _ n: Int) -> String {
         let flat = s.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
@@ -92,6 +117,34 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         }
     }
 
+    /// The row's second line, as the old compact view phrased it.
+    static func detail(of s: AgentSession, kind k: Kind) -> String {
+        if let p = s.pending {
+            return p.isQuestion ? "Claude asks: " + (p.question?.text ?? p.summary) : (p.agentType == nil ? "" : "↳ ") + p.summary
+        }
+        switch k {
+        case .input, .failed: return Fmt.plainText(s.attentionMessage ?? s.activity)
+        case .review: return Fmt.plainText(s.lastMessage ?? "Done")
+        case .idle: return "Idle"
+        default: return s.activity
+        }
+    }
+
+    static func prompt(for s: AgentSession) -> Prompt? {
+        guard let p = s.pending else { return nil }
+        let q = p.question
+        let opts = q?.options ?? []
+        // The card already names the tool, so "Bash: npm install" reads as just the command.
+        var text = q?.text ?? p.summary
+        if q == nil, text.hasPrefix(p.toolName + ": ") { text = String(text.dropFirst(p.toolName.count + 2)) }
+        return Prompt(
+            sessionId: s.id, requestId: p.id.uuidString, session: clip(s.displayTitle, 32), tool: clip(p.toolName, 24),
+            text: clip(text, 200), isQuestion: p.isQuestion, header: q?.header.map { clip($0, 20) },
+            options: opts.prefix(maxOptions).map { clip($0, 22) }, moreOptions: max(0, opts.count - maxOptions),
+            multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
+            subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer)
+    }
+
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows
@@ -105,24 +158,18 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         }
         let needs = active.filter { $0.status.needsAttention || $0.needsReview }
         let working = active.filter { $0.status == .working || $0.status == .compacting }
-        let shown = active.prefix(maxRows)
-        let rows = shown.map { s -> Row in
+        // Answerable requests first: those are the ones the island can settle.
+        let featured = active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
+        let prompt = featured.flatMap(prompt(for:))
+        let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
+        let rest = active.filter { $0.id != featured?.id }
+        let rows = rest.prefix(limit).map { s -> Row in
             let k = kind(of: s)
-            let detail: String =
-                switch k {
-                case .approval, .question: s.pending?.summary ?? s.activity
-                case .review: s.lastMessage ?? "Done"
-                default: s.activity
-                }
             return Row(
-                id: s.id, name: clip(s.displayTitle, 28), kind: k, detail: clip(detail, 90),
-                since: k == .working ? s.workingSince : nil, subagents: s.runningSubagents)
-        }
-        var approval: Approval?
-        if let s = active.first(where: { $0.pending?.canAnswer == true && $0.pending?.isQuestion == false }), let p = s.pending {
-            approval = Approval(
-                sessionId: s.id, requestId: p.id.uuidString, project: clip(s.projectName, 28), tool: clip(p.toolName, 24),
-                command: clip(p.summary, 160), fromSubagent: p.agentId != nil)
+                id: s.id, name: clip(s.displayTitle, 32), kind: k, detail: clip(detail(of: s, kind: k), 90),
+                since: k == .working ? s.workingSince : nil, subagents: s.runningSubagents, subagentTotal: s.subagents.count,
+                tokens: s.usage.work, context: (s.contextFraction * 100).rounded() / 100,
+                requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil)
         }
         let phase: Phase = !needs.isEmpty ? .needsYou : (!working.isEmpty ? .working : .done)
         let headline: String =
@@ -132,10 +179,9 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             default: "All done"
             }
         return NotchActivityState(
-            phase: phase, headline: headline, needsYou: needs.count, working: working.count,
-            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, rows: Array(rows),
-            more: max(0, active.count - rows.count), approval: approval,
-            fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction)
+            phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
+            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
+            more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

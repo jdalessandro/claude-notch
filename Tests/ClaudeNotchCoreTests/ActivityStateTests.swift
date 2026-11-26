@@ -12,7 +12,7 @@ import Testing
 
     @Test func emptyStoreIsIdle() {
         let st = NotchActivityState.make(sessions: [], quota: nil)
-        #expect(st.phase == .idle && st.rows.isEmpty && st.approval == nil)
+        #expect(st.phase == .idle && st.rows.isEmpty && st.prompt == nil)
     }
 
     @Test func workingSessionsSummarize() {
@@ -34,9 +34,9 @@ import Testing
                 })
         }
         let st = NotchActivityState.make(sessions: s.active, quota: nil)
-        let ap = try #require(st.approval)
-        #expect(st.phase == .needsYou && st.needsYou == 1 && st.rows.first?.kind == .approval)
-        #expect(ap.sessionId == "a" && ap.tool == "Bash" && ap.command.contains("rm -rf build"))
+        let ap = try #require(st.prompt)
+        #expect(st.phase == .needsYou && st.needsYou == 1 && st.rows.isEmpty, "the featured session is not repeated as a row")
+        #expect(ap.sessionId == "a" && ap.tool == "Bash" && ap.text.contains("rm -rf build") && !ap.isQuestion && ap.canAnswer)
         #expect(s.sessions["a"]?.isAnswerable(requestId: ap.requestId) == true)
     }
 
@@ -62,7 +62,32 @@ import Testing
                 })
         }
         let st = NotchActivityState.make(sessions: s.active, quota: nil)
-        #expect(st.rows.first?.kind == .question && st.approval == nil)
+        let p = try #require(st.prompt)
+        #expect(p.isQuestion && p.text == "Ship it?" && p.options == ["Yes"] && p.moreQuestions == 0)
+    }
+
+    @Test func secondRequestIsAnswerableInline() throws {
+        let s = store { st in
+            for sid in ["a", "b"] {
+                _ = st.apply(
+                    ev("PermissionRequest", sid: sid, expectsReply: true) {
+                        $0.toolName = "Bash"; $0.toolInput = .object(["command": .string("ls")])
+                    })
+            }
+        }
+        let st = NotchActivityState.make(sessions: s.active, quota: nil)
+        let row = try #require(st.rows.first)
+        #expect(st.prompt != nil && row.kind == .approval && row.id != st.prompt?.sessionId)
+        #expect(s.sessions[row.id]?.isAnswerable(requestId: row.requestId ?? "") == true)
+    }
+
+    @Test func reviewDetailIsPlainText() throws {
+        let s = store {
+            _ = $0.apply(ev("UserPromptSubmit", sid: "a") { $0.prompt = "go" })
+            _ = $0.apply(ev("Stop", sid: "a") { $0.lastAssistantMessage = "Merged **main** into [PR 2](https://x.y/2)" })
+        }
+        let st = NotchActivityState.make(sessions: s.active, quota: nil)
+        #expect(st.rows.first?.kind == .review && st.rows.first?.detail == "Merged main into PR 2")
     }
 
     @Test func overflowIsCountedAndQuotaPassesThrough() {

@@ -88,7 +88,6 @@ final class AppModel {
     private var prices = PriceTable.load(from: Paths.pricingURL)
     private var server: NotchServer?
     private var timer: Timer?
-    private var collapseTask: Task<Void, Never>?
 
     // MARK: lifecycle
 
@@ -99,7 +98,14 @@ final class AppModel {
             if old.approveFromIsland != new.approveFromIsland, self.hooksInstalled { self.installHooks() }
             self.reconcile()
         }
-        if demo { runDemo(); return }
+        if demo {
+            runDemo()
+            // No hook events arrive in the demo, so only the heartbeat keeps the island from reading as stale (dimmed).
+            timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.island.heartbeat() }
+            }
+            return
+        }
         refreshInstalledForwarder()
         refreshHookStatus()
         let srv = NotchServer { [weak self] env, reply in
@@ -255,6 +261,7 @@ final class AppModel {
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
+        if snapshotOnly { return }
         let state = NotchActivityState.make(sessions: store.active, quota: quotaNow)
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -373,6 +380,16 @@ final class AppModel {
     }
 
     // MARK: demo
+
+    /// Set by `--snapshot`: the demo data is loaded but no Live Activity is started or updated.
+    var snapshotOnly = false
+
+    /// The demo sessions, for rendering snapshots of the island views.
+    func loadDemoForSnapshot() -> [AgentSession] {
+        snapshotOnly = true
+        runDemo()
+        return store.active
+    }
 
     private func runDemo() {
         func e(
