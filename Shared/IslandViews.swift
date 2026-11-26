@@ -537,7 +537,9 @@ struct Footer: View {
     }
 
     /// "5h ▬▬ 44% 🕒2h": the window, a bar, the percentage, and how long until it resets in one short unit.
-    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false)
+    private func limit(
+        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false
+    )
         -> some View
     {
         HStack(spacing: 4) {
