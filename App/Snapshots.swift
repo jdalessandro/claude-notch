@@ -18,9 +18,14 @@ enum IslandSnapshots {
             sessions: sessions.filter { $0.status == .working || $0.status == .compacting }, quota: quota)
         let idle = NotchActivityState.make(sessions: [], quota: quota)
         let page2 = NotchActivityState.make(sessions: sessions.filter { $0.pending == nil }, quota: quota, page: 1)
+        // The island size setting at its largest step: bigger type, two session cards per page.
+        let larger = Preferences.IslandSize.larger
+        var large = NotchActivityState.make(
+            sessions: sessions.filter { $0.pending == nil }, quota: quota, maxRows: larger.maxRows)
+        large.scale = larger.scale
         for (name, st) in [
             ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
-            ("expanded-page-2", page2), ("expanded-idle", idle),
+            ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),
         ] {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))
         }
@@ -31,7 +36,7 @@ enum IslandSnapshots {
     }
 
     private static func expanded(_ st: NotchActivityState) -> some View {
-        IslandExpanded(state: st).padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 20).frame(width: 400)
+        IslandExpanded(state: st).islandScale(st.scale).padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 20).frame(width: 400)
             .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(.black))
             .padding(24).background(Color(white: 0.35))
             .environment(\.colorScheme, .dark)
