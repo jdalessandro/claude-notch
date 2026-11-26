@@ -16,103 +16,11 @@ extension AgentStatus {
     }
 }
 
-/// Island silhouette. Equal radii = floating capsule/card; `top == 0` = classic notch fused to the edge.
-struct NotchShape: Shape {
-    var top: CGFloat
-    var bottom: CGFloat
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { .init(top, bottom) }
-        set { top = newValue.first; bottom = newValue.second }
-    }
-    func path(in r: CGRect) -> Path {
-        let t = min(top, r.height / 2, r.width / 2), b = min(bottom, r.height / 2, r.width / 2)
-        var p = Path()
-        p.move(to: CGPoint(x: r.minX + t, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX - t, y: r.minY))
-        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + t), control: CGPoint(x: r.maxX, y: r.minY))
-        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - b))
-        p.addQuadCurve(to: CGPoint(x: r.maxX - b, y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.minX + b, y: r.maxY))
-        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - b), control: CGPoint(x: r.minX, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.minX, y: r.minY + t))
-        p.addQuadCurve(to: CGPoint(x: r.minX + t, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
-        p.closeSubpath()
-        return p
-    }
-}
-
 enum Metrics {
     static let islandRadius: CGFloat = 32
     static let inset: CGFloat = 12
     /// Concentric corners: inner radius = outer radius − inset, the rule the system islands follow.
     static var cardRadius: CGFloat { islandRadius - inset }
-    static let footerHeight: CGFloat = 38
-    static let compactFooter: CGFloat = 40
-    static let maxHeight: CGFloat = 580
-    static let previewFlank: CGFloat = 46
-}
-
-// MARK: - Root
-
-struct NotchRootView: View {
-    @Bindable var model: AppModel
-    let geometry: NotchGeometry
-    let onSize: (CGSize) -> Void
-    /// Natural height of the session list (kept in the model: SwiftUI's @State macro plugin is not available in CLT builds).
-    private var measured: CGFloat { model.listMeasured }
-
-    private var headerH: CGFloat { geometry.floating ? geometry.islandHeight : max(geometry.notchHeight, 30) }
-    private var maxListH: CGFloat { model.snapshotMode ? 4000 : Metrics.maxHeight - headerH - Metrics.footerHeight - Metrics.inset }
-    private var listH: CGFloat {
-        let h = measured > 0 ? measured : SessionList.estimate(model.store.active)
-        return min(h, maxListH)
-    }
-    private var collapsedSize: CGSize {
-        let hw = max(geometry.notchWidth, 120)
-        let showsFlanks = !model.store.active.isEmpty || !model.prefs.hideWhenIdle
-        return CGSize(width: hw + (showsFlanks ? 2 * Metrics.previewFlank : 8), height: headerH)
-    }
-    private var isCompact: Bool { model.effectiveMode == .compact }
-    private var expandedSize: CGSize {
-        if isCompact {
-            let h = headerH + CompactLayout.listHeight(sessionCount: model.store.active.count) + Metrics.compactFooter + Metrics.inset
-            return CGSize(width: min(model.panelWidth, CompactLayout.width), height: h)
-        }
-        return CGSize(width: model.panelWidth, height: headerH + listH + Metrics.footerHeight + Metrics.inset)
-    }
-    private var target: CGSize { model.expanded ? expandedSize : collapsedSize }
-    private var radii: (top: CGFloat, bottom: CGFloat) {
-        if geometry.floating { let r = model.expanded ? Metrics.islandRadius : headerH / 2; return (r, r) }
-        return (0, model.expanded ? 28 : 12)
-    }
-    /// One critically damped curve for everything: no overshoot, so the edge can't oscillate under the cursor.
-    private let anim = Animation.smooth(duration: 0.32)
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            VStack(spacing: 0) {
-                if model.expanded && isCompact {
-                    CompactView(model: model, geometry: geometry, headerH: headerH)
-                        .transition(.opacity)
-                } else if model.expanded {
-                    ExpandedView(model: model, geometry: geometry, headerH: headerH, listH: listH)
-                        .transition(.opacity)
-                } else {
-                    CollapsedView(model: model, geometry: geometry, height: headerH)
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: target.width, height: target.height, alignment: .top)
-            .background(NotchShape(top: radii.top, bottom: radii.bottom).fill(.black))
-            .clipShape(NotchShape(top: radii.top, bottom: radii.bottom))
-            .padding(.top, geometry.topGap)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(anim, value: target)
-        .onChange(of: target, initial: true) { _, t in onSize(CGSize(width: t.width, height: t.height + geometry.topGap)) }
-        .environment(\.colorScheme, .dark)
-        .foregroundStyle(.white)
-    }
 }
 
 // MARK: - Shared pieces
@@ -142,29 +50,6 @@ struct AgentTile: View {
 }
 
 /// Animated waveform: moves while Claude works, pulses amber when it needs you, rests otherwise.
-struct Equalizer: View {
-    let status: AgentStatus?
-    let height: CGFloat
-    private let phases: [Double] = [0, 1.3, 2.1, 0.7, 1.8]
-    var body: some View {
-        let live = status == .working || status == .compacting
-        let alert = status?.needsAttention == true
-        TimelineView(.animation(paused: !(live || alert))) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            HStack(spacing: height * 0.16) {
-                ForEach(0..<5, id: \.self) { i in
-                    let rest: [Double] = [0.35, 0.7, 0.5, 0.85, 0.3]
-                    let f =
-                        live ? 0.25 + 0.75 * abs(sin(t * 5 + phases[i])) : alert ? 0.3 + 0.5 * abs(sin(t * 2.5 + phases[i] * 0.4)) : rest[i]
-                    Capsule().fill(alert ? amber : live ? coral : Color.white.opacity(0.55))
-                        .frame(width: height * 0.13, height: max(2, height * f))
-                }
-            }
-            .frame(height: height)
-        }
-    }
-}
-
 struct ChipButton: View {
     let title: String
     var tint: Color
@@ -191,126 +76,6 @@ struct ContextBar: View {
             }
         }
     }
-}
-
-// MARK: - Collapsed (default view): tile + waveform
-
-struct CollapsedView: View {
-    let model: AppModel
-    let geometry: NotchGeometry
-    let height: CGFloat
-
-    var body: some View {
-        let prefs = model.prefs
-        let lead = model.lead
-        let hw = max(geometry.notchWidth, 120)
-        let badge = model.store.active.filter { $0.status.needsAttention || $0.needsReview }.count
-        let idleVisible = lead == nil && !prefs.hideWhenIdle
-        HStack(spacing: 0) {
-            if lead != nil || idleVisible {
-                let status = lead?.status ?? .ended
-                Group {
-                    if prefs.collapsedStyle == .tileAndWaveform {
-                        AgentTile(status: status, size: height - 10, badge: badge)
-                    } else if badge > 0 {
-                        Text("\(badge)").font(.system(size: 11, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(.red))
-                    }
-                }
-                .padding(.leading, 9)
-                .frame(width: Metrics.previewFlank, alignment: .leading)
-                Spacer(minLength: hw)
-                Equalizer(status: lead?.status, height: height * 0.48)
-                    .padding(.trailing, 14)
-                    .frame(width: Metrics.previewFlank, alignment: .trailing)
-            }
-        }
-        .frame(height: height)
-        .contentShape(Rectangle())
-        // With hover-to-open the click jumps to the lead agent; without it, the click opens the island.
-        .onTapGesture {
-            if prefs.expandOnHover { if let lead { model.open(lead) } } else { model.pinned = true }
-        }
-    }
-}
-
-// MARK: - Expanded: every session, grouped by what needs you
-
-struct ExpandedView: View {
-    @Bindable var model: AppModel
-    let geometry: NotchGeometry
-    let headerH: CGFloat
-    let listH: CGFloat
-    private var measured: CGFloat { model.listMeasured }
-
-    var body: some View {
-        let sessions = model.store.active
-        let totalTokens = sessions.reduce(0) { $0 + $1.usage.work }
-        let totalCost = sessions.reduce(0) { $0 + $1.costUSD }
-        let running = sessions.reduce(0) { $0 + $1.runningSubagents }
-        VStack(spacing: 0) {
-            // The header shares its row with the hardware cutout: each side gets a computed safe width and picks the
-            // longest wording that fits, so nothing ever runs underneath the cutout.
-            NotchHeaderRow(geometry: geometry, islandWidth: model.panelWidth, height: headerH) {
-                AgentCountTitle(model: model, count: sessions.count)
-            } right: {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        Text(model.showCost ? "\(Fmt.tokens(totalTokens)) tok · \(Fmt.cost(totalCost))" : "\(Fmt.tokens(totalTokens)) tok")
-                            .monospacedDigit()
-                        HeaderActions(model: model, compact: false)
-                    }.fixedSize()
-                    HeaderActions(model: model, compact: false).fixedSize()
-                }
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
-            }
-
-            Group {
-                if sessions.isEmpty {
-                    VStack(spacing: 4) {
-                        Text("No active Claude sessions").font(.system(size: 13, weight: .medium))
-                        Text(
-                            model.hooksInstalled
-                                ? "Start `claude` in a terminal — it will appear here."
-                                : "Install hooks below to start tracking sessions."
-                        )
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity).frame(height: listH)
-                } else {
-                    let list = SessionList(model: model)
-                        .padding(.horizontal, Metrics.inset)
-                        .frame(width: model.panelWidth)
-                        .fixedSize(horizontal: false, vertical: true)  // natural height, independent of the container
-                        .background(
-                            GeometryReader { g in
-                                Color.clear.preference(key: ListHeightKey.self, value: (g.size.height / 2).rounded() * 2)
-                            })
-                    Group {
-                        if !model.snapshotMode && (SessionList.estimate(sessions) > listH + 1 || measured > listH + 1) {
-                            ScrollViewReader { proxy in
-                                ScrollView(.vertical, showsIndicators: false) { list }
-                                    .onAppear { if let id = model.focusedId { proxy.scrollTo(id, anchor: .top) } }
-                            }
-                        } else {
-                            list
-                        }
-                    }
-                    .frame(height: listH, alignment: .top)
-                    .onPreferenceChange(ListHeightKey.self) { h in
-                        Task { @MainActor in if abs(h - model.listMeasured) >= 2 { model.listMeasured = h } }
-                    }
-                }
-            }
-
-            FooterView(model: model).frame(height: Metrics.footerHeight).padding(.horizontal, 20)
-            Spacer(minLength: 0)
-        }
-    }
-}
-
-private struct ListHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 struct SessionList: View {
@@ -522,7 +287,6 @@ struct SessionCard: View {
     private var s: AgentSession { session }
 
     private var border: Color {
-        if model.focusedId == s.id { return Color.white.opacity(0.45) }  // the session picked in the compact view
         return s.status.needsAttention ? amber.opacity(0.55) : s.needsReview ? Color.green.opacity(0.4) : Color.white.opacity(0.08)
     }
 
@@ -873,249 +637,48 @@ struct IslandMenu: View {
     }
 }
 
-// MARK: - Compact (abbreviated) view: one line per session
+// MARK: - Detail window (the full list the island has no room for)
 
-/// One header row with a safe zone for the hardware cutout: left and right groups are each limited to
-/// `SafeZone.sideWidth`, with the cutout (plus margin) left empty between them.
-struct NotchHeaderRow<Left: View, Right: View>: View {
-    let geometry: NotchGeometry
-    let islandWidth: CGFloat
-    let height: CGFloat
-    @ViewBuilder var left: Left
-    @ViewBuilder var right: Right
-
-    var body: some View {
-        let side = CGFloat(SafeZone.sideWidth(islandWidth: Double(islandWidth), cutoutWidth: Double(geometry.notchWidth)))
-        HStack(spacing: 0) {
-            left.frame(width: side, alignment: .leading)
-            Spacer(minLength: 0)
-            right.frame(width: side, alignment: .trailing)
-        }
-        .padding(.horizontal, CGFloat(SafeZone.outerPadding))
-        .frame(height: height)
-    }
-}
-
-/// The agent count, kept as informative as the room allows. With subagents running it is two lines:
-///     ✦ 3 agents
-///       2 subagents running
-/// and it degrades in order: drop the sparkle, then fold into one line ("3 agents · 2 sub"), then shorten the words.
-struct AgentCountTitle: View {
-    let model: AppModel
-    let count: Int
-
-    private func row(icon: Bool, twoLine: Bool, word: Bool, subs: Bool) -> some View {
-        let n = model.runningSubagentTotal
-        let head = word ? "\(count) agent\(count == 1 ? "" : "s")" : "\(count)"
-        return HStack(spacing: 6) {
-            if icon { Image(systemName: "sparkle").foregroundStyle(coral) }
-            if twoLine && subs && n > 0 {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(head).font(.system(size: 12, weight: .semibold))
-                    Text("\(n) subagent\(n == 1 ? "" : "s") running").font(.system(size: 9.5)).foregroundStyle(.secondary)
-                }
-            } else {
-                Text(head).font(.system(size: 12, weight: .semibold))
-                if subs && n > 0 { Text("· \(n) sub").font(.system(size: 11)).foregroundStyle(.secondary) }
-            }
-        }
-        .lineLimit(1).fixedSize()
-    }
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            row(icon: true, twoLine: true, word: true, subs: true)
-            row(icon: false, twoLine: true, word: true, subs: true)
-            row(icon: true, twoLine: false, word: true, subs: true)
-            row(icon: false, twoLine: false, word: true, subs: true)
-            row(icon: false, twoLine: false, word: false, subs: true)
-            row(icon: false, twoLine: false, word: false, subs: false)
-        }
-    }
-}
-
-/// Mark-reviewed, compact/detailed switch and pin: the header's icon buttons.
-struct HeaderActions: View {
+struct DetailView: View {
     @Bindable var model: AppModel
-    let compact: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if model.store.active.contains(where: { $0.needsReview }) {
-                Button {
-                    model.dismissAllReviewed()
-                } label: {
-                    Image(systemName: "checkmark.circle")
-                }
-                .buttonStyle(.plain).help("Mark all reviewed")
-            }
-            Button {
-                model.toggleExpandedMode()
-            } label: {
-                Image(systemName: compact ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
-            }
-            .buttonStyle(.plain).help(compact ? "Switch to detailed view" : "Switch to compact view")
-            Button {
-                model.pinned.toggle()
-            } label: {
-                Image(systemName: model.pinned ? "pin.fill" : "pin").rotationEffect(.degrees(45))
-            }
-            .buttonStyle(.plain).foregroundStyle(model.pinned ? coral : .secondary)
-        }
-    }
-}
-
-struct CompactView: View {
-    @Bindable var model: AppModel
-    let geometry: NotchGeometry
-    let headerH: CGFloat
-
     var body: some View {
         let sessions = model.store.active
-        let shown = Array(sessions.prefix(CompactLayout.maxRows))
         VStack(spacing: 0) {
-            NotchHeaderRow(geometry: geometry, islandWidth: min(model.panelWidth, CGFloat(CompactLayout.width)), height: headerH) {
-                AgentCountTitle(model: model, count: sessions.count)
-            } right: {
-                HeaderActions(model: model, compact: true).fixedSize()
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 8) {
+                Image(systemName: "sparkle").foregroundStyle(coral)
+                Text(NotchActivityState.make(sessions: sessions, quota: nil).headline).font(.system(size: 14, weight: .semibold))
+                if model.runningSubagentTotal > 0 {
+                    Label("\(model.runningSubagentTotal)", systemImage: "arrow.triangle.branch").font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !model.island.isLive {
+                    ChipButton(title: "Show island", tint: coral, filled: false) { model.showIsland() }
+                }
             }
-
-            Group {
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            Divider().opacity(0.3)
+            ScrollView {
                 if sessions.isEmpty {
-                    Text(model.hooksInstalled ? "No active Claude sessions" : "Install hooks to start tracking")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                    VStack(spacing: 4) {
+                        Text("No active Claude sessions").font(.system(size: 13, weight: .medium))
+                        Text(
+                            model.hooksInstalled
+                                ? "Start `claude` in a terminal — it will appear here."
+                                : "Install hooks below to start tracking sessions."
+                        )
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity).padding(.top, 60)
                 } else {
-                    VStack(spacing: CompactLayout.gap) {
-                        ForEach(shown) { CompactRow(model: model, session: $0) }
-                        if sessions.count > shown.count {
-                            Text("+\(sessions.count - shown.count) more · switch to detailed view")
-                                .font(.system(size: 10.5)).foregroundStyle(.tertiary)
-                                .frame(height: CompactLayout.overflowHeight)
-                        }
-                    }
-                    .padding(.horizontal, Metrics.inset)
+                    SessionList(model: model).padding(Metrics.inset)
                 }
             }
-            .frame(height: CompactLayout.listHeight(sessionCount: sessions.count), alignment: .top)
-            .frame(maxWidth: .infinity)
-
-            CompactFooter(model: model).frame(height: Metrics.compactFooter).padding(.horizontal, 20)
-            Spacer(minLength: 0)
+            Divider().opacity(0.3)
+            FooterView(model: model).padding(.horizontal, 16).padding(.vertical, 10)
         }
-    }
-}
-
-struct CompactRow: View {
-    let model: AppModel
-    let session: AgentSession
-    private var s: AgentSession { session }
-
-    private var subline: String {
-        if let p = s.pending, p.isQuestion { return "Claude asks: " + p.summary }
-        if let p = s.pending { return (p.agentType == nil ? "" : "↳ ") + p.summary }  // ↳ marks a subagent's request
-        switch s.status {
-        case .needsInput, .failed: return s.attentionMessage ?? Fmt.label(s.status)
-        case .working, .compacting:
-            return s.activity
-        case .done: return s.needsReview ? (s.lastMessage.map(Fmt.plainText) ?? "Done") : "Idle"
-        default: return Fmt.label(s.status)
-        }
-    }
-
-    private var border: Color {
-        s.status.needsAttention ? amber.opacity(0.55) : s.needsReview ? Color.green.opacity(0.4) : Color.white.opacity(0.08)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Circle().fill(s.status.color).frame(width: 8, height: 8)
-                .shadow(color: s.status.color.opacity(s.status.needsAttention ? 0.9 : 0), radius: 4)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(s.displayTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Text(subline.replacingOccurrences(of: "\n", with: " "))
-                    .font(.system(size: 11, design: (s.pending != nil && s.pending?.isQuestion != true) ? .monospaced : .default))
-                    .foregroundStyle(s.status.needsAttention ? amber : Color.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 6)
-            trailing
-        }
-        .padding(.horizontal, Metrics.inset)
-        .frame(height: CompactLayout.rowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(
-                Color.white.opacity(s.status.needsAttention ? 0.10 : 0.06))
-        )
-        .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).strokeBorder(border, lineWidth: 1))
-        .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
-        .onTapGesture { model.showDetails(for: s.id) }
-    }
-
-    @ViewBuilder private var trailing: some View {
-        if let p = s.pending, p.isQuestion {
-            ChipButton(title: "Answer", tint: amber, filled: true) { p.canAnswer ? model.answerQuestion(s) : model.open(s) }
-        } else if let p = s.pending {
-            if p.canAnswer {
-                HStack(spacing: 6) {
-                    ChipButton(title: "Allow", tint: .green, filled: true) { model.answer(s.id, .allow) }
-                    ChipButton(title: "Deny", tint: .red) { model.answer(s.id, .deny) }
-                }
-            } else {
-                ChipButton(title: "Open", tint: amber, filled: true) { model.open(s) }
-            }
-        } else if s.status == .needsInput || s.status == .failed {
-            ChipButton(title: "Open", tint: amber, filled: true) { model.open(s) }
-        } else if s.needsReview {
-            ChipButton(title: "Reviewed", tint: .gray) { model.dismiss(s.id) }
-        } else {
-            VStack(alignment: .trailing, spacing: 2) {
-                if let w = s.workingSince {
-                    TimelineView(.periodic(from: .now, by: 1)) { c in
-                        Text(Fmt.duration(c.date.timeIntervalSince(w))).font(.system(size: 11)).foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                } else {
-                    Text("\(Fmt.tokens(s.usage.work)) tok").font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
-                }
-                HStack(spacing: 4) {
-                    if let _ = s.subagentSummary {
-                        HStack(spacing: 2) {
-                            Image(systemName: "arrow.triangle.branch").font(.system(size: 8, weight: .semibold))
-                            Text("\(s.subagentBadgeCount)").font(.system(size: 9.5, weight: .semibold))
-                        }
-                        .foregroundStyle(s.runningSubagents > 0 ? coral.opacity(0.95) : Color.green.opacity(0.85))
-                    }
-                    ContextBar(fraction: s.contextFraction).frame(width: 28, height: 3)
-                    Text("\(Int(s.contextFraction * 100))%").font(.system(size: 9.5)).foregroundStyle(.tertiary).monospacedDigit()
-                }
-            }
-        }
-    }
-}
-
-/// One-line plan limits (5-hour and weekly) when known, else today's tokens; plus the shared menu.
-struct CompactFooter: View {
-    let model: AppModel
-
-    var body: some View {
-        HStack(spacing: 12) {
-            if let q = model.quotaNow, !q.windows.isEmpty {
-                ForEach([q.fiveHour, q.sevenDay].compactMap { $0 }) { w in
-                    HStack(spacing: 5) {
-                        Text(w.id == "five_hour" ? "5h" : "7d").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(.secondary)
-                        Capsule().fill(Color.white.opacity(0.10)).frame(width: 42, height: 5)
-                            .overlay(alignment: .leading) {
-                                Capsule().fill(quotaColor(w.fraction)).frame(width: max(5, 42 * w.fraction), height: 5)
-                            }
-                        Text("\(Int(w.usedPercent.rounded()))%").font(.system(size: 10.5, weight: .medium)).monospacedDigit()
-                    }
-                }
-            } else {
-                Text("\(Fmt.tokens(model.usage.today.work)) tok today").font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Spacer()
-            IslandMenu(model: model)
-        }
+        .frame(minWidth: 380, minHeight: 360)
+        .background(Color.black)
+        .environment(\.colorScheme, .dark)
+        .foregroundStyle(.white)
     }
 }

@@ -57,7 +57,9 @@ import Testing
             JSONValue.self, from: Data(#"{"questions":[{"question":"Ship it?","options":[{"label":"Yes"}]}]}"#.utf8))
         let s = store {
             _ = $0.apply(
-                ev("PermissionRequest", sid: "a", expectsReply: true) { $0.toolName = "AskUserQuestion"; $0.toolInput = q })
+                ev("PermissionRequest", sid: "a", expectsReply: true) {
+                    $0.toolName = "AskUserQuestion"; $0.toolInput = q
+                })
         }
         let st = NotchActivityState.make(sessions: s.active, quota: nil)
         #expect(st.rows.first?.kind == .question && st.approval == nil)

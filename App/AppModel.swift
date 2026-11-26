@@ -29,10 +29,6 @@ final class AppModel {
 
     init(defaults: UserDefaults = .standard) { settings = AppSettings(defaults: defaults) }
 
-    var hovering = false { didSet { reconcile() } }
-    var pinned = false { didSet { reconcile() } }
-    var autoExpandUntil = Date.distantPast
-    private(set) var expanded = false
     var hooksInstalled = HookInstaller.isInstalled()
     /// Hooks were installed by an older version and miss events this version relies on (for example SubagentStart).
     var hooksOutdated = false
@@ -42,15 +38,12 @@ final class AppModel {
     }
     let settings: AppSettings
     var prefs: Preferences { settings.prefs }
-    var panelWidth: CGFloat { CGFloat(prefs.panelWidth.points) }
     var onOpenSettings: (() -> Void)?
-    var onPreferencesChanged: (() -> Void)?
     var lastError: String?
     var eventLog: [String] = []
-    /// Offscreen rendering (`--snapshot`) cannot draw ScrollView, so it disables scrolling and the height cap.
-    var snapshotMode = false
-    /// Measured natural height of the expanded session list (quantized to avoid layout feedback loops).
-    var listMeasured: CGFloat = 0
+    /// The Live Activity that is the island.
+    let island = ActivityHost()
+    var onShowWindow: (() -> Void)?
 
     // MARK: plan, quota & usage
     var billing = PlanDetector.detectForCurrentUser()
@@ -87,26 +80,8 @@ final class AppModel {
         if expandedSubagents.contains(id) { expandedSubagents.remove(id) } else { expandedSubagents.insert(id) }
     }
 
-    private var reviewGate = ReviewGate()
-
-    /// Called often (from the pointer poll). A finished result counts as reviewed when the user deliberately views the
-    /// full result here: pointer over the island, detailed view, for a few seconds. The island opening by itself
-    /// (a notification) does not count, and neither does the compact view, which truncates the result.
-    func reviewTick(now: Date = Date()) {
-        var viewing: Set<String> = []
-        if prefs.autoMarkReviewed, expanded, hovering, effectiveMode == .detailed {
-            viewing = Set(store.active.filter { $0.needsReview }.map(\.id))
-        }
-        let reviewed = reviewGate.update(viewing: viewing, now: now)
-        guard !reviewed.isEmpty else { return }
-        for id in reviewed { store.markSeen(id) }
-        reconcile()
-    }
-
     func dismiss(_ id: String) { store.markSeen(id); reconcile() }
     func dismissAllReviewed() { store.markAllSeen(); reconcile() }
-
-    var onExpandedChange: ((Bool) -> Void)?
 
     private let hub = TranscriptHub()
     private var broker = PermissionBroker()
@@ -122,9 +97,7 @@ final class AppModel {
             guard let self else { return }
             // The approval mode lives in settings.json, so changing it means rewriting the hook entry.
             if old.approveFromIsland != new.approveFromIsland, self.hooksInstalled { self.installHooks() }
-            if new.hoverDelay != old.hoverDelay || !new.expandOnHover { self.hovering = false }
             self.reconcile()
-            self.onPreferencesChanged?()
         }
         if demo { runDemo(); return }
         refreshInstalledForwarder()
@@ -152,28 +125,6 @@ final class AppModel {
         usage = u
         if b != billing { billing = b }
     }
-    /// Switches between the compact and detailed island; the choice persists via preferences.
-    /// Set when a compact row was clicked: show the detailed view (scrolled to that session) until the island collapses.
-    var forcedDetailed = false
-    var focusedId: String?
-    var effectiveMode: Preferences.ExpandedMode {
-        Preferences.resolveExpandedMode(saved: prefs.expandedMode, forcedDetailed: forcedDetailed)
-    }
-
-    func showDetails(for id: String) {
-        focusedId = id
-        forcedDetailed = true
-    }
-
-    /// Header toggle. While a row-click detour is active it just goes back; otherwise it flips the saved mode.
-    func toggleExpandedMode() {
-        if forcedDetailed {
-            forcedDetailed = false
-            focusedId = nil
-        } else {
-            settings.prefs.expandedMode = prefs.expandedMode == .compact ? .detailed : .compact
-        }
-    }
     func refreshUsageNow() { Task { await refreshUsage() } }
     func openUsageSettings() { settings.tab = .integration; onOpenSettings?() }
 
@@ -194,6 +145,7 @@ final class AppModel {
         log(env)
         let sid = env.payload.sessionId ?? ""
         let name = env.payload.hookEventName ?? ""
+        activityTrace("event \(name) \(sid.prefix(8)) reply=\(reply != nil)")
         if name == "StatusLine" { handleStatusLine(env.payload); return }
         // Release a held hook only when this event really settles its request (see PermissionBroker).
         broker.handle(event: name, payload: env.payload, pending: store.sessions[sid]?.pending)
@@ -202,6 +154,7 @@ final class AppModel {
             reply.onClose = { [weak self, weak reply] in
                 Task { @MainActor in
                     guard let self, let reply else { return }
+                    activityTrace("peerClosed \(sid.prefix(8))")
                     self.broker.peerClosed(sid, sink: reply)
                     self.store.detachPending(sid)
                     self.reconcile()
@@ -213,12 +166,8 @@ final class AppModel {
         if case .notify(let id, let kind) = effect, let s = store.sessions[id] {
             if prefs.shouldNotify(kind) {
                 Notifier.post(
-                    kind: kind, session: s, sound: prefs.soundEnabled, banner: prefs.systemNotifications, details: prefs.bannerDetails)
-            }
-            if kind == .permission {
-                autoExpand(seconds: 600)
-            } else if prefs.autoExpandOnEvents {
-                autoExpand(seconds: TimeInterval(prefs.autoExpandSeconds))
+                    kind: kind, session: s, sound: prefs.soundEnabled && !island.isLive, banner: prefs.systemNotifications,
+                    details: prefs.bannerDetails)
             }
         }
         // Keep the UI honest: never show Allow/Deny for a request no hook is waiting on.
@@ -270,7 +219,8 @@ final class AppModel {
         for case .notify(let id, let kind) in effects {
             if let s = store.sessions[id], prefs.shouldNotify(kind) {
                 Notifier.post(
-                    kind: kind, session: s, sound: prefs.soundEnabled, banner: prefs.systemNotifications, details: prefs.bannerDetails)
+                    kind: kind, session: s, sound: prefs.soundEnabled && !island.isLive, banner: prefs.systemNotifications,
+                    details: prefs.bannerDetails)
             }
         }
         for gone in before.subtracting(store.sessions.keys) { await hub.forget(gone) }  // don't leak tailers of pruned sessions
@@ -285,30 +235,49 @@ final class AppModel {
         store.applyTranscript(snap, to: id, prices: prices)
     }
 
-    // MARK: expansion
+    // MARK: Live Activity
 
-    /// Keeps the panel open for at least `seconds`. Never shortens an existing deadline: a short notice must not
-    /// cut a long-lived approval request (or the demo's pinned-open state) short.
-    func autoExpand(seconds: TimeInterval) {
-        let until = Date().addingTimeInterval(seconds)
-        if until > autoExpandUntil { autoExpandUntil = until }
-        collapseTask?.cancel()
-        let delay = autoExpandUntil.timeIntervalSinceNow
-        guard delay < 1_000_000 else { return }
-        collapseTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay + 0.1))
-            self?.reconcile()
+    /// (Re)starts the island. Starting needs the foreground, so bring the app forward first.
+    func showIsland() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(400))
+            reconcile()
+            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) } else { onShowWindow?() }
         }
     }
 
+    private var seenAttention: Set<String> = []
+
+    /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
+    /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
-        if store.active.isEmpty, listMeasured != 0 { listMeasured = 0 }  // an empty list must not keep a stale height
-        let hasLivePrompt = store.active.contains { $0.pending?.canAnswer == true }
-        let want = hovering || pinned || hasLivePrompt || Date() < autoExpandUntil
-        if want != expanded {
-            expanded = want
-            if !want { forcedDetailed = false; focusedId = nil }  // the detour never outlives the open island
-            onExpandedChange?(want)
+        let state = NotchActivityState.make(sessions: store.active, quota: quotaNow)
+        func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
+        let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
+        let keys = Set(waiting.map(key))
+        var alert: (title: String, body: String, sound: Bool)?
+        if let lead = waiting.first(where: { !seenAttention.contains(key($0)) }), lead.status.needsAttention || prefs.autoExpandOnEvents {
+            alert = (lead.projectName, lead.pending?.summary ?? lead.activity, prefs.soundEnabled)
+        }
+        seenAttention = keys
+        if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
+        if alert != nil { activityTrace("alert \(state.headline)") }
+        island.push(state, alert: alert)
+    }
+
+    /// Answers an Allow/Deny/Open/Done tap from the island. A tap for a request that is no longer the live one is ignored.
+    func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
+        guard let s = store.sessions[sessionId] else { return }
+        activityTrace("intent \(action) answerable=\(s.isAnswerable(requestId: requestId))")
+        switch action {
+        case .allow where s.isAnswerable(requestId: requestId): answer(sessionId, .allow)
+        case .deny where s.isAnswerable(requestId: requestId): answer(sessionId, .deny)
+        case .allow, .deny: break
+        case .open:
+            if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
+        case .reviewed: dismiss(sessionId)
         }
     }
 
@@ -522,6 +491,6 @@ final class AppModel {
         u.today = TokenUsage(input: 210_000, output: 880_000, cacheWrite: 2_100_000)
         u.week = TokenUsage(input: 1_400_000, output: 5_200_000, cacheWrite: 11_000_000)
         usage = u
-        autoExpandUntil = .distantFuture; reconcile()
+        reconcile()
     }
 }
