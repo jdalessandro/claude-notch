@@ -16,23 +16,6 @@ extension AgentStatus {
     }
 }
 
-extension AgentSession {
-    var activity: String {
-        switch status {
-        case .working:
-            mainTurnEnded && runningSubagents > 0
-                ? "Waiting on \(runningSubagents) subagent\(runningSubagents == 1 ? "" : "s")" : (currentToolDetail ?? "Thinking…")
-        case .compacting: "Compacting context…"
-        case .needsPermission: "Needs your approval"
-        case .needsInput: "Waiting for you"
-        case .done: "Done"
-        case .failed: "Turn failed"
-        case .ended: "Ended"
-        }
-    }
-    var needsReview: Bool { status == .done && unseen }
-}
-
 /// Island silhouette. Equal radii = floating capsule/card; `top == 0` = classic notch fused to the edge.
 struct NotchShape: Shape {
     var top: CGFloat
