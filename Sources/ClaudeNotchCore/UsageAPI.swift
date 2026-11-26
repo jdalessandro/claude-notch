@@ -121,7 +121,8 @@ public enum UsageAPI {
             creds = try await renew(creds, session: session)
             token = try Self.token(fromCredentials: creds)
         }
-        var req = URLRequest(url: endpoint, timeoutInterval: 15)
+        // Never answer from URLCache: the refresh button promises numbers fresh from Anthropic.
+        var req = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         req.setValue("claude-notch", forHTTPHeaderField: "User-Agent")
