@@ -202,6 +202,12 @@ final class AppModel {
 
     func open(_ s: AgentSession) {
         store.markSeen(s.id)
+        // Prefer the exact conversation in Claude Desktop (this also activates the app).
+        if let link = DesktopSessionLink.url(forCLISession: s.id) {
+            NSWorkspace.shared.open(link)
+            reconcile()
+            return
+        }
         let bundle: String? =
             if s.entrypoint?.contains("desktop") == true { "com.anthropic.claudefordesktop" } else {
                 [
@@ -210,8 +216,12 @@ final class AppModel {
                     "vscode": "com.microsoft.VSCode", "WarpTerminal": "dev.warp.Warp-Stable",
                 ][s.termProgram ?? ""]
             }
-        if let b = bundle, let app = NSRunningApplication.runningApplications(withBundleIdentifier: b).first {
-            app.activate()
+        // NSRunningApplication.activate() is ignored when this (accessory) app isn't frontmost, which is the case when
+        // the tap comes from the Live Activity. Launch Services always brings the target forward.
+        if let b = bundle, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config)
         }
         reconcile()
     }
