@@ -29,8 +29,8 @@ CFG = {k: uid() for k in ["pd", "pr", "ad", "ar", "ed", "er"]}
 def q(s): return '"%s"' % s
 def lst(ids): return "(" + ", ".join(ids) + ")"
 
-common = {"SDKROOT": "macosx", "MACOSX_DEPLOYMENT_TARGET": "27.3", "SWIFT_VERSION": "5.0", "CODE_SIGN_STYLE": "Manual",
-  "CODE_SIGN_IDENTITY": q("-"), "ENABLE_HARDENED_RUNTIME": "NO", "GENERATE_INFOPLIST_FILE": "NO", "ARCHS": "arm64",
+common = {"SDKROOT": "macosx", "MACOSX_DEPLOYMENT_TARGET": "27.3", "SWIFT_VERSION": "5.0", "CODE_SIGN_STYLE": "Automatic", "DEVELOPMENT_TEAM": "85F89G5QS6",
+  "CODE_SIGN_IDENTITY": q("Apple Development"), "ENABLE_HARDENED_RUNTIME": "NO", "GENERATE_INFOPLIST_FILE": "NO", "ARCHS": "arm64",
   "ONLY_ACTIVE_ARCH": "YES", "CLANG_ENABLE_MODULES": "YES", "SWIFT_EMIT_LOC_STRINGS": "NO", "ENABLE_USER_SCRIPT_SANDBOXING": "NO"}
 def settings(d): return "{\n" + "".join("\t\t\t\t%s = %s;\n" % (k, v) for k, v in sorted(d.items())) + "\t\t\t}"
 app_s = {"PRODUCT_BUNDLE_IDENTIFIER": "dev.claudenotch.live", "PRODUCT_NAME": q("NotchLive"), "INFOPLIST_FILE": "App/Info.plist",

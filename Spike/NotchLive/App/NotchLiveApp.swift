@@ -34,10 +34,10 @@ private let log = Logger(subsystem: "dev.claudenotch.live", category: "app")
         note("updated")
     }
 
-    func update2() async {
+    func update2(n: Int = 0) async {
         guard let activity else { return note("nothing to update") }
         let s = NotchAttributes.ContentState(
-            agents: 5, needsYou: 2, headline: "web-dashboard needs you", detail: "Bash: rm -rf node_modules", approvalPending: true)
+            agents: 5, needsYou: 2, headline: "web-dashboard needs you", detail: "Bash: rm -rf node_modules (\(n))", approvalPending: true)
         await activity.update(.init(state: s, staleDate: nil), alertConfiguration: AlertConfiguration(title: "Needs you", body: "web-dashboard", sound: .default))
         note("updated2 (with alert)")
     }
@@ -67,6 +67,15 @@ private let log = Logger(subsystem: "dev.claudenotch.live", category: "app")
             .padding(20).frame(minWidth: 520)
             .task {
                 if CommandLine.arguments.contains("--start") { m.start(style: .standard) }
+                if CommandLine.arguments.contains("--pulse") {
+                    // Re-expand the island with an alert every 12 s so a person can press Allow/Deny.
+                    m.start(style: .standard)
+                    for i in 0..<10 {
+                        try? await Task.sleep(for: .seconds(12))
+                        await m.update2(n: i)
+                    }
+                    await m.end()
+                }
                 if CommandLine.arguments.contains("--seq") {
                     // Start in the foreground, then keep updating while the app is in the background.
                     m.start(style: .standard)
