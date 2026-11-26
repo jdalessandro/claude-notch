@@ -103,6 +103,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// The session list is paged (a Live Activity can't scroll): which page is shown, of how many.
     public var page = 0
     public var pages = 1
+    /// Type and icon size multiplier chosen in settings (1 = default); the widget process can't read the app's settings.
+    public var scale = 1.0
 
     /// Whether the waveform has bars to move.
     public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }

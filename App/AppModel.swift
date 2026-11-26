@@ -341,7 +341,9 @@ final class AppModel {
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
         if snapshotOnly { return }
-        var state = NotchActivityState.make(sessions: store.active, quota: quotaNow, page: islandPage)
+        var state = NotchActivityState.make(
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+        state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
         let keys = Set(waiting.map(key))
@@ -353,7 +355,9 @@ final class AppModel {
         if alert != nil { holdPage() }
         if alert != nil, state.page != 0 {
             islandPage = 0
-            state = NotchActivityState.make(sessions: store.active, quota: quotaNow, page: 0)
+            state = NotchActivityState.make(
+                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+            state.scale = prefs.islandSize.scale
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }

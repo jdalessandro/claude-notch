@@ -47,3 +47,17 @@ import Testing
         #expect(!p.shouldNotify(.finished))
     }
 }
+
+@Suite struct IslandSizeTests {
+    @Test func stepsAreOrderedAndDefaultIsOne() {
+        let s = Preferences.IslandSize.allCases.map(\.scale)
+        #expect(s == s.sorted() && Preferences().islandSize.scale == 1.0)
+    }
+    @Test func roundTripsAndInvalidFallsBack() throws {
+        var p = Preferences(); p.islandSize = .larger
+        let back = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(p))
+        #expect(back.islandSize == .larger)
+        let bad = try JSONDecoder().decode(Preferences.self, from: Data(#"{"islandSize":99}"#.utf8))
+        #expect(bad.islandSize == .standard)
+    }
+}
