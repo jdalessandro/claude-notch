@@ -491,65 +491,72 @@ struct Footer: View {
     let state: NotchActivityState
     @Environment(\.islandScale) private var k
     var body: some View {
-        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 14pt
+        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 22pt
         // stub, which still reads as a meter), and only then do the limits move onto their own line above the pager.
+        // One line, always: the pager never drops below the limits. When it gets tight the bars and then the type
+        // shrink, but the bars stay visible.
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                limits(bar: 40)
-                Spacer(minLength: 0)
-                pager
-            }
-            HStack(spacing: 10) {
-                limits(bar: 24)
-                Spacer(minLength: 0)
-                pager
-            }
-            HStack(spacing: 8) {
-                limits(bar: 14, spacing: 9)
-                Spacer(minLength: 0)
-                pager
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                limits(bar: 40)
-                HStack {
-                    Spacer(minLength: 0)
-                    pager
-                }
-            }
+            row(bar: 40, size: 11, icon: true)
+            row(bar: 28, size: 11, icon: true)
+            row(bar: 30, size: 11, icon: false)
+            row(bar: 22, size: 10.5, icon: false)
+            row(bar: 16, size: 10, icon: false)
         }
         .padding(.horizontal, 4)
+    }
+
+    private func row(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
+        HStack(spacing: 8) {
+            limits(bar: bar, size: size, icon: icon)
+            refresh
+            Spacer(minLength: 0)
+            pager
+        }
+    }
+
+    /// Sits right after the limits it refreshes, not after the pager.
+    private var refresh: some View {
+        Button(intent: RefreshUsageIntent()) {
+            Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
+                .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
     }
 
     @ViewBuilder private var pager: some View {
         if state.pages > 1 { Pager(state: state).fixedSize() }
     }
 
-    private func limits(bar: CGFloat, spacing: CGFloat = 12) -> some View {
-        HStack(spacing: spacing) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, hm: true) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar) }
+    private func limits(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
+        HStack(spacing: 9) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, hm: true) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon) }
         }
     }
 
-    /// "5h ▬▬ 44% ↻2h": the window, a bar, the percentage, and how long until it resets in one short unit.
-    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, hm: Bool = false) -> some View {
-        HStack(spacing: 5) {
+    /// "5h ▬▬ 44% 🕒2h": the window, a bar, the percentage, and how long until it resets in one short unit.
+    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false)
+        -> some View
+    {
+        HStack(spacing: 4) {
             Text(label).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar * k, height: 5 * k)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar * k, height: 7 * k)
                 .overlay(alignment: .leading) {
-                    Capsule().fill(Island.quota(f)).frame(width: max(5 * k, bar * k * min(1, f)), height: 5 * k)
+                    Capsule().fill(Island.quota(f)).frame(width: max(7 * k, bar * k * min(1, f)), height: 7 * k)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
-                HStack(spacing: 1) {
-                    Image(systemName: "arrow.counterclockwise").sfont(size: 8, weight: .bold)
+                HStack(spacing: 2) {
+                    if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
                     Text(left)
                 }
                 .foregroundStyle(Island.tertiary)
             }
         }
         .monospacedDigit()
-        .sfont(size: 11, weight: .semibold)
+        .sfont(size: size, weight: .semibold)
         .fixedSize()
     }
 }
@@ -585,7 +592,7 @@ struct Pager: View {
     let state: NotchActivityState
     @Environment(\.islandScale) private var k
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 5) {
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
             HStack(spacing: 4) {
                 ForEach(0..<min(state.pages, 8), id: \.self) { i in
@@ -602,7 +609,7 @@ struct Pager: View {
 
     private func arrow(_ symbol: String) -> some View {
         Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 24 * k, height: 24 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
     }
 }
 

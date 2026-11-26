@@ -346,6 +346,9 @@ final class AppModel {
             islandPage += action == .nextPage ? 1 : -1
             reconcile()
             return
+        case .refreshUsage:
+            refreshUsageNow()
+            return
         default: break
         }
         guard let s = store.sessions[sessionId] else { return }
@@ -356,7 +359,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage: break
+        case .nextPage, .previousPage, .refreshUsage: break
         }
     }
 

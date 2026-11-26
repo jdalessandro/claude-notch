@@ -66,7 +66,7 @@ Interaction is `Button(intent:)` and `Link` / `widgetURL` only.
 
 | Today | ActivityKit design | Class |
 |---|---|---|
-| 5-hour / weekly / per-model bars with reset times, amber at 75 %, red at 90 % | Expanded bottom region: two thin `ProgressView` bars (5 h and weekly) with colour thresholds. Per-model rows and reset detail in the window | Live Activity (two bars) + **Window** |
+| 5-hour / weekly / per-model bars with reset times, amber at 75 %, red at 90 % | Expanded bottom region: two bars (5 h and weekly) with colour thresholds, reset countdowns and a refresh button, on one line with the pager. Per-model rows and reset detail in the window | Live Activity (two bars) + **Window** |
 | Limits \| Tokens toggle | Toggle exists in the window only (no stateful controls in the activity) | **Window** |
 | Cost display rules (hidden on Pro/Max) | Keep rules; shown in the window | Keep + **Window** |
 | Status-line quota ingestion, persisted `quota.json` | Unchanged | Keep |
