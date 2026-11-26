@@ -5,6 +5,7 @@ import SwiftUI
 // Claude Notch — Claude Code's status as a macOS Live Activity (Dynamic Island).
 //   ClaudeNotch            run normally (listens for hook events)
 //   ClaudeNotch --demo     run with synthetic sessions (no hooks needed)
+//   ClaudeNotch --snapshot <dir>   render the island views with the demo data to PNGs and exit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -14,6 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let i = CommandLine.arguments.firstIndex(of: "--snapshot") {
+            let dir = CommandLine.arguments.indices.contains(i + 1) ? CommandLine.arguments[i + 1] : "snapshots"
+            IslandSnapshots.render(sessions: model.loadDemoForSnapshot(), to: URL(fileURLWithPath: dir))
+            exit(0)
+        }
         // Starting a Live Activity needs the app in the foreground, so launch as a regular app first and become a
         // menu-bar-only agent once the activity is up.
         NSApp.setActivationPolicy(.regular)

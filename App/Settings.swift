@@ -88,6 +88,14 @@ struct GeneralTab: View {
     var body: some View {
         Form {
             Section {
+                IslandSizePicker(size: $settings.prefs.islandSize)
+            } header: {
+                Text("Island size")
+            } footer: {
+                hint("Scales the island's text and icons. Larger sizes show fewer sessions per page.")
+            }
+
+            Section {
                 Toggle("Raise the island when something needs you", isOn: $settings.prefs.autoExpandOnEvents)
                 Picker("Forget idle sessions after", selection: $settings.prefs.sessionRetention) {
                     Text("1 hour").tag(Preferences.SessionRetention.oneHour)
@@ -104,6 +112,34 @@ struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// A stepped slider like the macOS display picker: ends labelled by words, ticks for each step, no numbers.
+struct IslandSizePicker: View {
+    @Binding var size: Preferences.IslandSize
+    private var steps: Double { Double(Preferences.IslandSize.allCases.count - 1) }
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("A").font(.system(size: 11))
+                Slider(
+                    value: Binding(
+                        get: { Double(size.rawValue) },
+                        set: { size = Preferences.IslandSize(rawValue: Int($0.rounded())) ?? .standard }),
+                    in: 0...steps, step: 1)
+                Text("A").font(.system(size: 19))
+            }
+            HStack {
+                Text("Smaller")
+                Spacer()
+                Text(size.title).fontWeight(.semibold).foregroundStyle(.primary)
+                Spacer()
+                Text("Larger")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 }
 

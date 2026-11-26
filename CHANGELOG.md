@@ -13,8 +13,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
   core and the hook stay in SwiftPM. CI covers the SwiftPM part (hosted runners lack the macOS 27.3 SDK).
 
 ### Removed
-- Island style/width, collapsed style, hover expansion and delay, auto-open duration, compact/detailed toggle, waveform,
-  and dwell-based auto-review: the system owns the island's layout and interaction. Old preference files still load.
+- The AppKit panel and its settings: island style and width, collapsed style, hide when idle, compact/detailed toggle,
+  hover expansion and delay, auto-open duration, and dwell-based auto-review. The system owns the island's layout and
+  interaction. Old preference files still load; the keys are ignored.
+
+### Added
+- `make snapshots` renders the island views from the demo data to `docs/screens/` (`ClaudeNotch --snapshot <dir>`).
 
 ## [0.1.0] - Unreleased
 

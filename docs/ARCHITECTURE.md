@@ -6,7 +6,7 @@ claude (CLI / desktop)                              ClaudeNotch.app
    v                                                  |- SessionStore    pure reducer: events -> sessions
 claude-notch-hook --- notch.sock --------------->     |- TranscriptTailer  per-session usage / title / cost
    ^  PermissionRequest: blocks until answered        |- UsageAggregator   quota windows from all transcripts
-   '------------- Allow / Deny <---------------       `- NotchController   NSPanel at the cutout + SwiftUI
+   '------------- Allow / Deny <---------------       `- ActivityHost      Live Activity (widget extension draws it)
 claude status line --- claude-notch-hook --statusline -->  QuotaState (rate limits, exact context window)
 ```
 
@@ -17,7 +17,8 @@ claude status line --- claude-notch-hook --statusline -->  QuotaState (rate limi
   preferences are also here.
 - **claude-notch-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
   `--interactive`) waits for a reply, which it prints in Claude Code's decision schema.
-- **ClaudeNotch** owns presentation. `AppModel` (`@Observable`) is the single source of truth for views.
+- **ClaudeNotch** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
+  (`@Observable`) is the single source of truth; the Live Activity and the *Sessions* window both render from it.
 
 ## Event model
 
@@ -55,26 +56,13 @@ user answers.
 - `PlanDetector` reads `~/.claude.json` (`oauthAccount.billingType`/`organizationType`) and the environment
   (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) to decide between subscription (hide dollars, show quota) and API billing.
 
-## Hover and layout
+## The Live Activity
 
-Opening and closing from SwiftUI `onHover` on the animating shape feeds back on itself. Instead, `NotchController`
-samples the real pointer position at 20 Hz against the island's **final** rectangle and passes it through `HoverGate`
-(dwell to open, grace period to close). Animations use one critically damped curve with no overshoot, list heights are
-measured and quantized, and while collapsed the transparent window margins are click-through.
-
-## Safe zone around the cutout
-
-The header row shares its band with the opaque hardware cutout. `SafeZone.sideWidth` (core, tested) gives each side of the
-header the width left beside the cutout after a margin and the island's outer padding. `NotchHeaderRow` limits the left
-and right groups to that width, and each group lists its wordings longest-first inside a `ViewThatFits`. The title is two lines when subagents run
-("3 agents" over "2 subagents running"), and degrades by dropping the decorative sparkle first, then folding to one
-line ("3 agents · 2 sub"), then shortening the words; tokens + icons degrade to icons. Text degrades instead of running
-underneath the cutout. The cutout width the app measures already includes a margin, so `SafeZone.cutoutMargin` is only a
-small extra clearance (a large one would waste room and force terse wording). To check a
-layout, run `CLAUDE_NOTCH_SNAPSHOT_DEBUG=1 .build/debug/ClaudeNotch --snapshot <dir>`: it renders the headers with the
-cutout drawn in red, at the real width and at a much wider one.
-
-## Geometry
-
-`NotchGeometry` reads `NSScreen.safeAreaInsets` and the auxiliary areas for the cutout. The floating style offsets
-the pill by ~19% of the reserved band, matching the hardware island; the attached style fuses with the top edge.
+The island is a Live Activity drawn by the system, so there is no window geometry, hover handling or cutout math in
+the app. `NotchActivityState.make` (core, tested) compacts the sessions, the most urgent request and the quota into a
+small `Codable` state under `NotchActivityState.byteBudget`, which ActivityKit enforces. `ActivityHost` starts the
+activity while the app is in the foreground, then pushes updates (with an alert when something new needs you) and a
+heartbeat so the island is not shown as stale. The views live in `Shared/IslandViews.swift`, compiled into both the
+widget extension and the app: the widget renders them in the island, and the app renders them offscreen for
+`--snapshot`. Buttons are App Intents (`Shared/Intents.swift`) that run in the app process and resolve the exact
+pending request through `PermissionBroker`; a stale or repeated tap is ignored.

@@ -49,10 +49,21 @@ final class ActivityHost {
             state: s, staleDate: Date().addingTimeInterval(Self.staleAfter), relevanceScore: Self.relevance(s))
     }
 
+    /// Updates go out strictly in order. Separate `Task`s (a push racing a beat) can reach the system out of order, and
+    /// an older state landing last leaves the island showing the wrong phase, for example no waveform while agents work.
+    private var sendChain: Task<Void, Never>?
+    private func send(_ run: @escaping @Sendable () async -> Void) {
+        let previous = sendChain
+        sendChain = Task {
+            await previous?.value; await run()
+        }
+    }
+
     /// Re-sends the current state so it does not go stale while the app is healthy.
     func heartbeat() {
         guard let activity, let last else { return }
-        Task { await activity.update(content(last)) }
+        let c = content(last)
+        send { await activity.update(c) }
     }
 
     /// The system (or the user, by dismissing it) can end the activity at any time; stop holding on to it.
@@ -71,6 +82,8 @@ final class ActivityHost {
     private var lastAlertKey: String?
 
     var isLive: Bool { activity != nil }
+    /// What the island shows right now.
+    var current: NotchActivityState? { last }
     var enabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
     /// Ends every activity left over from an earlier run. The system can keep reporting one as `active` while it is no
@@ -110,13 +123,16 @@ final class ActivityHost {
     /// Pushes a new state. `alert` re-expands the island (used when something new needs the user).
     func push(_ state: NotchActivityState, alert: (title: String, body: String, sound: Bool)? = nil) {
         guard let activity else { return }
+        var state = state
+        state.pulse = last?.pulse ?? 0  // the beat is the host's, not the reducer's
         if state == last, alert == nil { return }
         last = state
         let content = content(state)
         let key = alert.map { "\($0.title)|\($0.body)" }
-        Task {
-            if let alert, key != lastAlertKey {
-                lastAlertKey = key
+        let fire = alert != nil && key != lastAlertKey
+        if fire { lastAlertKey = key }
+        send {
+            if let alert, fire {
                 await activity.update(
                     content,
                     alertConfiguration: AlertConfiguration(
@@ -126,6 +142,16 @@ final class ActivityHost {
                 await activity.update(content)
             }
         }
+    }
+
+    /// One waveform beat: re-sends the current state with the next `pulse`, which the widget animates. Only while
+    /// something runs, so an idle island costs nothing.
+    func beat() {
+        guard let activity, var s = last, s.isAnimated else { return }
+        s.pulse &+= 1
+        last = s
+        let content = content(s)
+        send { await activity.update(content) }
     }
 
     func end() async {

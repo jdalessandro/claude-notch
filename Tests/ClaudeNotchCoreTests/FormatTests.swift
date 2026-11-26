@@ -22,6 +22,8 @@ import Testing
         #expect(Fmt.until(now.addingTimeInterval(4 * 3_600 + 300), now: now) == "4h")
         #expect(Fmt.until(now.addingTimeInterval(25 * 60), now: now) == "25m")
         #expect(Fmt.until(now.addingTimeInterval(-10), now: now) == "1m")  // already past: never negative
+        #expect(Fmt.untilHM(now.addingTimeInterval(2 * 3_600 + 35 * 60), now: now) == "2h 35m")
+        #expect(Fmt.untilHM(now.addingTimeInterval(35 * 60), now: now) == "35m")
     }
     @Test func relativeTime() {
         let now = Date(timeIntervalSince1970: 10_000)

@@ -25,7 +25,9 @@ actor TranscriptHub {
 
 @MainActor @Observable
 final class AppModel {
-    var store = SessionStore()
+    var store: SessionStore = {
+        var s = SessionStore(); s.windowCache = ContextWindowCache.load(); s.catalog = ModelCatalog.load(); return s
+    }()
 
     init(defaults: UserDefaults = .standard) { settings = AppSettings(defaults: defaults) }
 
@@ -88,7 +90,7 @@ final class AppModel {
     private var prices = PriceTable.load(from: Paths.pricingURL)
     private var server: NotchServer?
     private var timer: Timer?
-    private var collapseTask: Task<Void, Never>?
+    private var beatTimer: Timer?
 
     // MARK: lifecycle
 
@@ -99,7 +101,20 @@ final class AppModel {
             if old.approveFromIsland != new.approveFromIsland, self.hooksInstalled { self.installHooks() }
             self.reconcile()
         }
-        if demo { runDemo(); return }
+        beatTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.island.beat()
+                self?.autoPage()
+            }
+        }
+        if demo {
+            runDemo()
+            // No hook events arrive in the demo, so only the heartbeat keeps the island from reading as stale (dimmed).
+            timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.island.heartbeat() }
+            }
+            return
+        }
         refreshInstalledForwarder()
         refreshHookStatus()
         let srv = NotchServer { [weak self] env, reply in
@@ -136,6 +151,8 @@ final class AppModel {
         }
         if case .number(let n)? = p.contextWindow?["context_window_size"], let sid = p.sessionId {
             store.setExactContextWindow(Int(n), for: sid)
+            store.windowCache.record(size: Int(n), session: sid)
+            store.windowCache.save()
         }
     }
 
@@ -196,6 +213,12 @@ final class AppModel {
 
     func open(_ s: AgentSession) {
         store.markSeen(s.id)
+        // Prefer the exact conversation in Claude Desktop (this also activates the app).
+        if let link = DesktopSessionLink.url(forCLISession: s.id) {
+            NSWorkspace.shared.open(link)
+            reconcile()
+            return
+        }
         let bundle: String? =
             if s.entrypoint?.contains("desktop") == true { "com.anthropic.claudefordesktop" } else {
                 [
@@ -204,8 +227,12 @@ final class AppModel {
                     "vscode": "com.microsoft.VSCode", "WarpTerminal": "dev.warp.Warp-Stable",
                 ][s.termProgram ?? ""]
             }
-        if let b = bundle, let app = NSRunningApplication.runningApplications(withBundleIdentifier: b).first {
-            app.activate()
+        // NSRunningApplication.activate() is ignored when this (accessory) app isn't frontmost, which is the case when
+        // the tap comes from the Live Activity. Launch Services always brings the target forward.
+        if let b = bundle, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: config)
         }
         reconcile()
     }
@@ -213,6 +240,7 @@ final class AppModel {
     func tick() async {
         tickCount += 1
         if tickCount % 15 == 0 { await refreshUsage() }  // every ~30 s
+        if tickCount % 150 == 0 { store.catalog = ModelCatalog.load() }  // every ~5 min: Claude refreshes its model catalog
         if tickCount % 30 == 0 { island.heartbeat() }  // every ~60 s: keeps the activity from reading as stale
         let before = Set(store.sessions.keys)
         // Pruning can also finish a session whose subagents went silent; deliver that "finished" notification.
@@ -228,6 +256,8 @@ final class AppModel {
         for s in store.active {
             if let p = s.transcriptPath { await refreshTranscript(id: s.id, path: p) }
         }
+        // Looking at a finished session in Claude Desktop counts as reviewing it.
+        store.markViewed { DesktopSessionLink.lastFocused(forCLISession: $0) }
         reconcile()
     }
 
@@ -251,11 +281,40 @@ final class AppModel {
     }
 
     private var seenAttention: Set<String> = []
+    /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
+    /// needs the user.
+    private var islandPage = 0
+    /// Pages turn by themselves every `pageInterval`. The island can't report hover, so any tap on it (and anything new
+    /// needing the user) holds the current page for `pageHold` instead.
+    private var lastPageTurn = Date()
+    private var pageHoldUntil = Date.distantPast
+    private static let pageInterval: TimeInterval = 6
+    private static let pageHold: TimeInterval = 20
+
+    private func holdPage() {
+        pageHoldUntil = Date().addingTimeInterval(Self.pageHold)
+        lastPageTurn = Date()
+    }
+
+    /// Called every second: turns to the next page when there is more than one and nobody is interacting.
+    private func autoPage() {
+        let now = Date()
+        guard let st = island.current, st.pages > 1, now >= pageHoldUntil,
+            now.timeIntervalSince(lastPageTurn) >= Self.pageInterval
+        else { return }
+        lastPageTurn = now
+        islandPage += 1
+        reconcile()
+        activityTrace("auto page \(islandPage + 1)/\(st.pages)")
+    }
 
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
-        let state = NotchActivityState.make(sessions: store.active, quota: quotaNow)
+        if snapshotOnly { return }
+        var state = NotchActivityState.make(
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+        state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
         let keys = Set(waiting.map(key))
@@ -264,6 +323,15 @@ final class AppModel {
             alert = (lead.projectName, lead.pending?.summary ?? lead.activity, prefs.soundEnabled)
         }
         seenAttention = keys
+        if alert != nil { holdPage() }
+        if alert != nil, state.page != 0 {
+            islandPage = 0
+            state = NotchActivityState.make(
+                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+            state.scale = prefs.islandSize.scale
+        } else {
+            islandPage = state.page  // keep it in range as sessions come and go
+        }
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -271,6 +339,15 @@ final class AppModel {
 
     /// Answers an Allow/Deny/Open/Done tap from the island. A tap for a request that is no longer the live one is ignored.
     func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
+        holdPage()  // the user is using the island: stop turning pages under them
+        switch action {
+        case .nextPage, .previousPage:
+            activityTrace("intent \(action)")
+            islandPage += action == .nextPage ? 1 : -1
+            reconcile()
+            return
+        default: break
+        }
         guard let s = store.sessions[sessionId] else { return }
         activityTrace("intent \(action) answerable=\(s.isAnswerable(requestId: requestId))")
         switch action {
@@ -279,7 +356,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .reviewed: dismiss(sessionId)
+        case .nextPage, .previousPage: break
         }
     }
 
@@ -373,6 +450,16 @@ final class AppModel {
     }
 
     // MARK: demo
+
+    /// Set by `--snapshot`: the demo data is loaded but no Live Activity is started or updated.
+    var snapshotOnly = false
+
+    /// The demo sessions, for rendering snapshots of the island views.
+    func loadDemoForSnapshot() -> [AgentSession] {
+        snapshotOnly = true
+        runDemo()
+        return store.active
+    }
 
     private func runDemo() {
         func e(
