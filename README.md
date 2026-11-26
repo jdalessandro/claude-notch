@@ -38,7 +38,8 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 
 ## Requirements
 
-- A Mac running **macOS 14 or later**. Designed for notched MacBook Pros; works on other displays with a virtual island.
+- A Mac running **macOS 27.3 or later** (Live Activities on the Mac) with Xcode 27.3+ to build. Best on a notched MacBook Pro.
+- An Apple developer team for signing (a free Personal Team is enough for local builds): the Allow / Deny buttons are App Intents, which the system only runs for properly signed apps.
 - **Claude Code** (CLI and/or the Claude desktop app's Code tab).
 - To build: the Swift 6 toolchain (Xcode or just the Command Line Tools).
 
@@ -49,15 +50,17 @@ There are no binary releases yet; build from source:
 ```bash
 git clone https://github.com/jdalessandro/claude-notch.git
 cd claude-notch
-make bundle                 # builds dist/ClaudeNotch.app (menu-bar-only, ad-hoc signed)
+echo YOUR_TEAM_ID > .xcode-team   # 10 characters, from Xcode ▸ Settings ▸ Accounts (never committed)
+make bundle                       # generates the Xcode project and builds dist/ClaudeNotch.app
 open dist/ClaudeNotch.app
 ```
 
-Then click the island ▸ **Install hooks** (or *Settings ▸ Integration*), and restart any Claude sessions that were
+The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
+the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
+
+Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
 already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
 at `settings.json.claude-notch.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
-
-Because the build is ad-hoc signed, macOS may ask you to confirm the first launch (right-click ▸ Open).
 
 **Just want to look around?** `make demo` launches the app with synthetic agents and no setup.
 
