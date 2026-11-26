@@ -7,7 +7,34 @@ import SwiftUI
 // Styled after the system media island: big artwork, a bold title over a grey subtitle, a waveform on the right,
 // no outlines, generous continuous corners.
 
+private struct IslandScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+extension EnvironmentValues {
+    /// Size multiplier for the island's type and icons (from settings, carried in `NotchActivityState.scale`).
+    var islandScale: CGFloat {
+        get { self[IslandScaleKey.self] }
+        set { self[IslandScaleKey.self] = newValue }
+    }
+}
+
+private struct ScaledFont: ViewModifier {
+    @Environment(\.islandScale) private var scale
+    let size: CGFloat
+    let weight: Font.Weight
+    let design: Font.Design
+    func body(content: Content) -> some View { content.font(.system(size: size * scale, weight: weight, design: design)) }
+}
+
+extension View {
+    /// A system font at `size` points times the island's scale.
+    func sfont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> some View {
+        modifier(ScaledFont(size: size, weight: weight, design: design))
+    }
+    func islandScale(_ s: Double) -> some View { environment(\.islandScale, CGFloat(s)) }
+}
+
 enum Island {
+    /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
+    static let inset: CGFloat = 17
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
@@ -16,7 +43,10 @@ enum Island {
     static let secondary = Color.white.opacity(0.55)
     static let tertiary = Color.white.opacity(0.35)
     static let surface = Color.white.opacity(0.08)
-    static let panelRadius: CGFloat = 22
+    /// Cards inside the island. Near-concentric with the island's ~22pt corner across its ~16pt margin (strictly
+    /// concentric would be ~6pt, which reads boxy at card size); nested boxes step down again (`innerRadius`).
+    static let panelRadius: CGFloat = 12
+    static let innerRadius: CGFloat = 8
 
     static func quota(_ f: Double) -> Color { f >= 0.9 ? red : f >= 0.75 ? amber : blue }
     static func context(_ f: Double) -> Color { f > 0.85 ? red : f > 0.65 ? amber : coral }
@@ -174,11 +204,13 @@ struct Pill: View {
     var filled = false
     var height: CGFloat = 32
     var stretch = true
+    @Environment(\.islandScale) private var k
     var body: some View {
-        Text(title).font(.system(size: height * 0.42, weight: .semibold)).lineLimit(1)
+        let h = height * k
+        Text(title).font(.system(size: h * 0.42, weight: .semibold)).lineLimit(1)
             .foregroundStyle(filled ? Color.white : tint == .white ? Color.white : tint)
-            .padding(.horizontal, height * 0.45)
-            .frame(maxWidth: stretch ? .infinity : nil, minHeight: height, maxHeight: height)
+            .padding(.horizontal, h * 0.45)
+            .frame(maxWidth: stretch ? .infinity : nil, minHeight: h, maxHeight: h)
             .background(Capsule().fill(filled ? tint : Color.white.opacity(0.14)))
             .contentShape(Capsule())
     }
@@ -191,14 +223,15 @@ struct Badge<Label: View>: View {
     var tint: Color? = nil
     var icon: String? = nil
     @ViewBuilder var label: Label
+    @Environment(\.islandScale) private var k
     var body: some View {
-        HStack(spacing: 3) {
-            if let icon { Image(systemName: icon).font(.system(size: 9, weight: .bold)) }
+        HStack(spacing: 3 * k) {
+            if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .font(.system(size: 11, weight: .semibold)).monospacedDigit().lineLimit(1)
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1)
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
-        .padding(.horizontal, 7).padding(.vertical, 3)
+        .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
         .fixedSize()
     }
@@ -217,14 +250,15 @@ struct Stat<Glyph: View, Value: View>: View {
     var tint: Color? = nil
     @ViewBuilder var glyph: Glyph
     @ViewBuilder var value: Value
+    @Environment(\.islandScale) private var k
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 4 * k) {
             glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
-            value.font(.system(size: 11, weight: .semibold)).foregroundStyle(tint ?? Color.white.opacity(0.9))
-            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.white.opacity(0.45))
+            value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
+            Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
         }
         .monospacedDigit().lineLimit(1)
-        .padding(.horizontal, 7).padding(.vertical, 3)
+        .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill(Color.white.opacity(0.08)))
         .fixedSize()
     }
@@ -247,13 +281,14 @@ struct Ring: View {
     let fraction: Double
     let tint: Color
     var size: CGFloat = 10
+    @Environment(\.islandScale) private var k
     var body: some View {
         ZStack {
             Circle().stroke(Color.white.opacity(0.18), lineWidth: 2)
             Circle().trim(from: 0, to: max(0.04, min(1, fraction))).stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: size, height: size)
+        .frame(width: size * k, height: size * k)
     }
 }
 
@@ -266,7 +301,7 @@ struct PromptPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text(p.session).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(p.session).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                 Spacer(minLength: 6)
                 if p.isQuestion {
                     if let h = p.header { Badge(h) }
@@ -287,13 +322,13 @@ struct PromptPanel: View {
 
     private var question: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(p.text).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+            Text(p.text).sfont(size: 15, weight: .semibold).foregroundStyle(.white).lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             if !p.options.isEmpty {
                 // Read-only: the answer is given in Claude itself.
                 HStack(spacing: 5) {
                     ForEach(p.options, id: \.self) { o in
-                        Text(o).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
+                        Text(o).sfont(size: 12, weight: .medium).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
                             .padding(.horizontal, 9).padding(.vertical, 4)
                             .background(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
                     }
@@ -307,10 +342,10 @@ struct PromptPanel: View {
     }
 
     private var permission: some View {
-        Text(p.text).font(.system(size: 12.5, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.92))
+        Text(p.text).sfont(size: 12.5, weight: .medium, design: .monospaced).foregroundStyle(.white.opacity(0.92))
             .lineLimit(2).padding(.horizontal, 10).padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.55)))
+            .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
     @ViewBuilder private var actions: some View {
@@ -319,7 +354,7 @@ struct PromptPanel: View {
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
                     Pill(title: "Open", tint: Island.coral, filled: true, height: 30)
                 }
-                Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").font(.system(size: 12))
+                Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").sfont(size: 12)
                     .foregroundStyle(Island.secondary).frame(maxWidth: .infinity)
             } else if p.isQuestion {
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Not now", height: 30) }
@@ -344,13 +379,14 @@ struct PromptPanel: View {
 /// One session in two lines: name, branch and status; then what it is doing, with its actions or stats beside it.
 struct SessionRow: View {
     let row: NotchActivityState.Row
+    @Environment(\.islandScale) private var k
     var body: some View {
         // Live Activities don't deliver taps to a button hidden behind other content, so the tappable regions are the
         // visible header and detail text themselves; the actions on the right keep their own buttons.
         VStack(alignment: .leading, spacing: 5) {
             Button(intent: OpenSessionIntent(sessionId: row.id)) {
                 HStack(spacing: 6) {
-                    Text(row.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                    Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                         .layoutPriority(1)
                     if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
                     Spacer(minLength: 6)
@@ -362,7 +398,7 @@ struct SessionRow: View {
             HStack(spacing: 5) {
                 Button(intent: OpenSessionIntent(sessionId: row.id)) {
                     Text(row.detail)
-                        .font(.system(size: 12.5, design: row.kind == .approval ? .monospaced : .default))
+                        .sfont(size: 12.5, design: row.kind == .approval ? .monospaced : .default)
                         .foregroundStyle(row.kind.needsYou ? Color.white.opacity(0.85) : Island.secondary)
                         .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
@@ -374,14 +410,14 @@ struct SessionRow: View {
         .padding(.horizontal, 12).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
                 .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface))
     }
 
     @ViewBuilder private var status: some View {
         if row.kind == .working, let since = row.since {
             Badge(tint: Island.coral) {
-                Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36)
+                Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36 * k)
             }
         } else {
             Badge(row.status, tint: row.kind == .idle ? nil : row.kind.tint)
@@ -418,7 +454,7 @@ struct SessionRow: View {
                         label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
                         tint: running ? Island.coral : nil
                     ) {
-                        Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 9, weight: .bold))
+                        Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
                     }
                 }
                 if row.linesAdded + row.linesRemoved > 0 {
@@ -453,30 +489,80 @@ struct SessionRow: View {
 /// page.
 struct Footer: View {
     let state: NotchActivityState
+    @Environment(\.islandScale) private var k
     var body: some View {
-        HStack(spacing: 10) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset) }
-            Spacer(minLength: 0)
-            if state.pages > 1 { Pager(state: state) }
+        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 14pt
+        // stub, which still reads as a meter), and only then do the limits move onto their own line above the pager.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                limits(bar: 40)
+                Spacer(minLength: 0)
+                pager
+            }
+            HStack(spacing: 10) {
+                limits(bar: 24)
+                Spacer(minLength: 0)
+                pager
+            }
+            HStack(spacing: 8) {
+                limits(bar: 14, spacing: 9)
+                Spacer(minLength: 0)
+                pager
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                limits(bar: 40)
+                HStack {
+                    Spacer(minLength: 0)
+                    pager
+                }
+            }
         }
         .padding(.horizontal, 4)
     }
 
-    private func limit(_ label: String, _ f: Double, _ reset: Date?) -> some View {
-        HStack(spacing: 4) {
+    @ViewBuilder private var pager: some View {
+        if state.pages > 1 { Pager(state: state).fixedSize() }
+    }
+
+    private func limits(bar: CGFloat, spacing: CGFloat = 12) -> some View {
+        HStack(spacing: spacing) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, hm: true) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar) }
+        }
+    }
+
+    /// "5h ▬▬ 44% ↻2h": the window, a bar, the percentage, and how long until it resets in one short unit.
+    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, hm: Bool = false) -> some View {
+        HStack(spacing: 5) {
             Text(label).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.16)).frame(width: 26, height: 5)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar * k, height: 5 * k)
                 .overlay(alignment: .leading) {
-                    Capsule().fill(Island.quota(f)).frame(width: max(5, 26 * min(1, f)), height: 5)
+                    Capsule().fill(Island.quota(f)).frame(width: max(5 * k, bar * k * min(1, f)), height: 5 * k)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
-            // No reset time means no window is running (nothing used since the last reset).
-            Text(reset.map { Island.resetLabel($0) } ?? "fresh").foregroundStyle(Island.tertiary)
+            if let reset, let left = Island.shortUntil(reset, hm: hm) {
+                HStack(spacing: 1) {
+                    Image(systemName: "arrow.counterclockwise").sfont(size: 8, weight: .bold)
+                    Text(left)
+                }
+                .foregroundStyle(Island.tertiary)
+            }
         }
         .monospacedDigit()
-        .font(.system(size: 11, weight: .semibold))
+        .sfont(size: 11, weight: .semibold)
         .fixedSize()
+    }
+}
+
+extension Island {
+    /// Time until `date` in one short unit: "45m", "3h", "4d". Nil once it has passed.
+    static func shortUntil(_ date: Date, hm: Bool = false, now: Date = .now) -> String? {
+        let s = date.timeIntervalSince(now)
+        guard s > 0 else { return nil }
+        if hm { return Fmt.untilHM(date, now: now) }
+        if s < 3600 { return "\(max(1, Int(s / 60)))m" }
+        if s < 86_400 { return "\(Int((s / 3600).rounded()))h" }
+        return "\(Int((s / 86_400).rounded()))d"
     }
 }
 
@@ -497,13 +583,14 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
+    @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 7) {
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
             HStack(spacing: 4) {
                 ForEach(0..<min(state.pages, 8), id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
-                        .frame(width: i == state.page ? 12 : 5, height: 5)
+                        .frame(width: (i == state.page ? 12 : 5) * k, height: 5 * k)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: state.page)
@@ -514,8 +601,8 @@ struct Pager: View {
     }
 
     private func arrow(_ symbol: String) -> some View {
-        Image(systemName: symbol).font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 24, height: 24).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+        Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
+            .frame(width: 24 * k, height: 24 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
     }
 }
 
@@ -526,12 +613,40 @@ struct IslandTitle: View {
     let state: NotchActivityState
     var body: some View {
         HStack(spacing: 6) {
-            Text(state.sessions == 0 ? "No active sessions" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+            IslandHeadline(state: state)
             Spacer(minLength: 6)
+            IslandBadges(state: state)
+        }
+    }
+}
+
+/// "N agents". On the island it sits in the leading region, up beside the cutout.
+struct IslandHeadline: View {
+    let state: NotchActivityState
+    var body: some View {
+        Text(state.sessions == 0 ? "All quiet" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
+            .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+            .fixedSize()
+    }
+}
+
+/// What needs you, what is working, how many subagents run. On the island it sits in the trailing region. The badges
+/// are fixed-size, so the least urgent ones drop out when there isn't room for all of them.
+struct IslandBadges: View {
+    let state: NotchActivityState
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            badges(working: true, subagents: true)
+            badges(working: true, subagents: false)
+            badges(working: false, subagents: false)
+        }
+    }
+
+    private func badges(working: Bool, subagents: Bool) -> some View {
+        HStack(spacing: 6) {
             if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
-            if state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
-            if state.subagentsRunning > 0 {
+            if working, state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
+            if subagents, state.subagentsRunning > 0 {
                 Badge(
                     "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
                     icon: "point.3.connected.trianglepath.dotted")
@@ -544,10 +659,10 @@ struct IslandTitle: View {
 struct IslandBody: View {
     let state: NotchActivityState
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             if let p = state.prompt { PromptPanel(p: p) }
             ForEach(state.rows) { SessionRow(row: $0) }
-            Footer(state: state).padding(.top, 2)
+            Footer(state: state).padding(.top, 4)
         }
     }
 }
@@ -574,51 +689,59 @@ struct IslandExpanded: View {
 /// each resets.
 struct IslandIdle: View {
     let state: NotchActivityState
+    /// False on the island, where "All quiet" already sits up beside the cutout (and the compact view shows the logo).
+    var header = true
+    @Environment(\.islandScale) private var k
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Artwork(size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("All quiet").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                    Text("No Claude Code sessions running").font(.system(size: 13)).foregroundStyle(Island.secondary)
+        VStack(alignment: .leading, spacing: header ? 12 : 8) {
+            if !header {
+                Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)
+                    .lineLimit(1).padding(.horizontal, 4)
+            } else {
+                HStack(spacing: 12) {
+                    Artwork(size: 34 * k)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("All quiet").sfont(size: 16, weight: .semibold).foregroundStyle(.white)
+                        Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)
+                    }
+                    .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .lineLimit(1)
-                Spacer(minLength: 0)
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
             if state.fiveHour != nil || state.weekly != nil {
                 HStack(alignment: .top, spacing: 16) {
-                    if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset) }
+                    if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset, hm: true) }
                     if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Island.surface))
+                .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
             }
         }
     }
 
-    private func meter(_ label: String, _ f: Double, _ reset: Date?) -> some View {
+    private func meter(_ label: String, _ f: Double, _ reset: Date?, hm: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(Island.secondary)
+                Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
                 Spacer(minLength: 4)
-                Text("\(Int((f * 100).rounded()))%").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
                     .monospacedDigit()
             }
-            Capsule().fill(Color.white.opacity(0.16)).frame(height: 6)
+            Capsule().fill(Color.white.opacity(0.16)).frame(height: 6 * k)
                 .overlay(alignment: .leading) {
                     GeometryReader { g in
-                        Capsule().fill(Island.quota(f)).frame(width: max(6, g.size.width * min(1, f)))
+                        Capsule().fill(Island.quota(f)).frame(width: max(6 * k, g.size.width * min(1, f)))
                     }
                 }
             Group {
                 if let reset, reset > .now {
-                    Text("Resets \(Island.resetLabel(reset)) · in ") + Text(reset, style: .relative)
+                    Text("Resets \(Island.shortUntil(reset, hm: hm) ?? "soon")")
                 } else {
                     Text(f == 0 ? "Not used yet" : "Reset time unknown")
                 }
             }
-            .font(.system(size: 11)).foregroundStyle(Island.tertiary).lineLimit(1)
+            .sfont(size: 11).foregroundStyle(Island.tertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
