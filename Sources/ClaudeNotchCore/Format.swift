@@ -19,6 +19,17 @@ public enum Fmt {
         let s = max(0, Int(date.timeIntervalSince(now)))
         return s >= 86_400 ? "\(s / 86_400)d" : s >= 3600 ? "\(s / 3600)h" : "\(max(1, s / 60))m"
     }
+    /// Countdown for the 5-hour window: hours and minutes, "2h 35m" / "1h" / "35m".
+    public static func untilHM(_ date: Date, now: Date = Date()) -> String {
+        let s = max(0, Int(date.timeIntervalSince(now)))
+        let h = s / 3600, m = s % 3600 / 60
+        if h == 0 { return "\(max(1, m))m" }
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+    }
+    /// Countdown for a window, matching Claude Desktop: 5-hour → "2h 35m", weekly → "4d" (largest unit).
+    public static func until(_ date: Date, fiveHour: Bool, now: Date = Date()) -> String {
+        fiveHour ? untilHM(date, now: now) : until(date, now: now)
+    }
     /// "just now" / "3m ago" / "2h ago".
     public static func ago(_ date: Date, now: Date = Date()) -> String {
         let s = max(0, Int(now.timeIntervalSince(date)))
