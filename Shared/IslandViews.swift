@@ -769,6 +769,6 @@ struct IslandCompactTrailing: View {
     let state: NotchActivityState
     var body: some View {
         // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
-        AgentWave(state: state, height: 15).frame(width: 30, height: 15)
+        AgentWave(state: state, height: 12).frame(width: 30, height: 12)
     }
 }
