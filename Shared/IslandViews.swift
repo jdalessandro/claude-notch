@@ -16,6 +16,15 @@ extension EnvironmentValues {
     }
 }
 
+private struct IslandStaleKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// True when the system reports the activity as stale: the app stopped updating it.
+    var islandStale: Bool {
+        get { self[IslandStaleKey.self] }
+        set { self[IslandStaleKey.self] = newValue }
+    }
+}
+
 private struct ScaledFont: ViewModifier {
     @Environment(\.islandScale) private var scale
     let size: CGFloat
@@ -386,13 +395,9 @@ struct PromptPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !p.options.isEmpty {
                 // Read-only: the answer is given in Claude itself.
-                HStack(spacing: 5) {
-                    ForEach(p.options, id: \.self) { o in
-                        Text(o).sfont(size: 12, weight: .medium).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
-                            .padding(.horizontal, 9).padding(.vertical, 4)
-                            .background(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
-                    }
-                    if p.moreOptions > 0 { Badge("+\(p.moreOptions)") }
+                HStack(spacing: 6) {
+                    Text(p.options.joined(separator: " · ") + (p.moreOptions > 0 ? "  +\(p.moreOptions)" : ""))
+                        .sfont(size: 12, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if p.multiSelect { Badge("Choose any") }
                     if p.moreQuestions > 0 { Badge("+\(p.moreQuestions) more") }
@@ -411,8 +416,12 @@ struct PromptPanel: View {
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
-                Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").sfont(size: 12)
-                    .foregroundStyle(Island.secondary).lineLimit(1)
+                let short = p.isQuestion ? "Answer in Claude" : "Approve in terminal"
+                ViewThatFits(in: .horizontal) {
+                    Text("\(short): NotchBot can't answer this one").lineLimit(1)
+                    Text(short).lineLimit(1)
+                }
+                .sfont(size: 12).foregroundStyle(Island.secondary)
                 Spacer(minLength: 8)
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
                     Pill(title: "Open", tint: Island.coral, filled: true, height: 26, stretch: false)
@@ -420,7 +429,7 @@ struct PromptPanel: View {
             } else if p.isQuestion {
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Not now", height: 26, stretch: false)
+                    Pill(title: "Skip", height: 26, stretch: false)
                 }
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 26, stretch: false)
@@ -591,49 +600,69 @@ struct Footer: View {
         // One line, always: the pager never drops below the limits. When it gets tight the bars and then the type
         // shrink, but the bars stay visible.
         ViewThatFits(in: .horizontal) {
+            row(bar: 40, size: 11, icon: true, words: true)
             row(bar: 40, size: 11, icon: true)
             row(bar: 28, size: 11, icon: true)
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
-            row(bar: 16, size: 10, icon: false)
+            row(bar: 16, size: 10, icon: false, dots: state.offPageNeed == 0)
         }
         .padding(.horizontal, 4)
     }
 
-    private func row(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
+    private func row(
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true
+    )
+        -> some View
+    {
         HStack(spacing: 8) {
-            limits(bar: bar, size: size, icon: icon)
+            limits(bar: bar, size: size, icon: icon, words: words)
             refresh
             Spacer(minLength: 0)
-            pager
+            pager(dots: dots)
         }
     }
 
-    /// Sits right after the limits it refreshes, not after the pager.
+    /// Sits right after the limits it refreshes, not after the pager. Amber with an exclamation when the last refresh
+    /// failed, coral while one is running.
     private var refresh: some View {
-        Button(intent: RefreshQuotaIntent()) {
-            Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-                .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
+        let note = state.limitsNote
+        return Button(intent: RefreshQuotaIntent()) {
+            Image(systemName: note == .failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.clockwise")
+                .sfont(size: 10, weight: .bold)
+                .foregroundStyle(note == .failed ? Island.amber : note == .refreshing ? Island.coral : .white.opacity(0.85))
+                .frame(width: 22 * k, height: 22 * k)
+                .background(Circle().fill(Color.white.opacity(note == .refreshing ? 0.2 : 0.12)))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .fixedSize()
     }
 
-    @ViewBuilder private var pager: some View {
-        if state.pages > 1 { Pager(state: state).fixedSize() }
+    @ViewBuilder private func pager(dots: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, dots: dots).fixedSize() }
     }
 
-    private func limits(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
-        HStack(spacing: 9) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, hm: true) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon) }
+    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool) -> some View {
+        if state.limitsUnknown {
+            // Never vanish silently: say that there is nothing to show (nothing at all for an account without plan windows).
+            if let text = Island.unavailableText(state.limitsNote) {
+                Text(text).sfont(size: size, weight: .medium).foregroundStyle(Island.tertiary).lineLimit(1).fixedSize()
+            }
+        } else {
+            HStack(spacing: 9) {
+                if let f = state.fiveHour {
+                    limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, words: words, hm: true)
+                }
+                if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon, words: words) }
+            }
         }
     }
 
     /// "5h ▬▬ 44% 🕒2h": the window, a bar, the percentage, and how long until it resets in one short unit.
     private func limit(
-        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false
+        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false,
+        hm: Bool = false
     )
         -> some View
     {
@@ -645,11 +674,15 @@ struct Footer: View {
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
-                HStack(spacing: 2) {
-                    if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
-                    Text(left)
+                if words {
+                    Text("· resets \(left)").foregroundStyle(Island.tertiary)
+                } else {
+                    HStack(spacing: 2) {
+                        if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
+                        Text(left)
+                    }
+                    .foregroundStyle(Island.tertiary)
                 }
-                .foregroundStyle(Island.tertiary)
             }
         }
         .monospacedDigit()
@@ -659,6 +692,16 @@ struct Footer: View {
 }
 
 extension Island {
+    /// What the footer says in place of the limits when neither window is known. Nil: say nothing.
+    static func unavailableText(_ note: NotchActivityState.LimitsNote?) -> String? {
+        switch note {
+        case .refreshing: "Refreshing limits…"
+        case .failed: "Couldn't load limits"
+        case .notApplicable: nil
+        case nil: "Limits unavailable"
+        }
+    }
+
     /// Time until `date` in one short unit: "45m", "3h", "4d". Nil once it has passed.
     static func shortUntil(_ date: Date, hm: Bool = false, now: Date = .now) -> String? {
         let s = date.timeIntervalSince(now)
@@ -687,12 +730,20 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
+    /// False in the tightest footer: the dots give way to the label and the "+N need you" hint.
+    var dots = true
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
+            if state.offPageNeed > 0 {
+                Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.amber)
+                    .lineLimit(1).fixedSize().padding(.trailing, 3)
+            }
+            Text("\(state.page + 1)/\(state.pages)").sfont(size: 11, weight: .medium).monospacedDigit()
+                .foregroundStyle(Island.secondary).lineLimit(1).fixedSize()
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
             HStack(spacing: 4) {
-                ForEach(0..<min(state.pages, 8), id: \.self) { i in
+                ForEach(0..<(dots ? min(state.pages, 8) : 0), id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
                         .frame(width: (i == state.page ? 12 : 5) * k, height: 5 * k)
                 }
@@ -728,9 +779,12 @@ struct IslandTitle: View {
 struct IslandHeadline: View {
     let state: NotchActivityState
     var body: some View {
-        Text(state.sessions == 0 ? "All quiet" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
-            .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-            .fixedSize()
+        Text(
+            state.sessions == 0
+                ? (state.hooksMissing ? "Not watching" : "All quiet") : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents"
+        )
+        .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+        .fixedSize()
     }
 }
 
@@ -774,8 +828,10 @@ struct SettingsGear: View {
 /// Everything under the header.
 struct IslandBody: View {
     let state: NotchActivityState
+    @Environment(\.islandStale) private var stale
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
             ForEach(state.rows) { SessionRow(row: $0) }
             Footer(state: state).padding(.top, 4)
@@ -783,13 +839,25 @@ struct IslandBody: View {
     }
 }
 
+/// Shown when the system marks the activity stale: the numbers below may be out of date.
+struct StaleNotice: View {
+    var body: some View {
+        Label("Paused — open NotchBot to refresh", systemImage: "pause.circle.fill")
+            .sfont(size: 11, weight: .medium).foregroundStyle(Island.amber).lineLimit(1).padding(.horizontal, 4)
+    }
+}
+
 /// The expanded content: the idle view when no session is active, otherwise the header and the sessions.
 /// Used by the island's bottom region, the banner presentation and snapshots.
 struct IslandExpanded: View {
     let state: NotchActivityState
+    @Environment(\.islandStale) private var stale
     var body: some View {
         if state.sessions == 0 {
-            IslandIdle(state: state)
+            VStack(alignment: .leading, spacing: 8) {
+                if stale { StaleNotice() }
+                IslandIdle(state: state)
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 IslandTitle(state: state).padding(.horizontal, 4)
@@ -808,9 +876,27 @@ struct IslandIdle: View {
     /// False on the island, where "All quiet" already sits up beside the cutout (and the compact view shows the logo).
     var header = true
     @Environment(\.islandScale) private var k
+    @Environment(\.islandStale) private var stale
     var body: some View {
         VStack(alignment: .leading, spacing: header ? 12 : 8) {
-            if !header {
+            if stale && !header { StaleNotice() }
+            if state.hooksMissing {
+                // "All quiet" would be a lie: with no hooks NotchBot cannot see any session.
+                Button(intent: OpenSettingsIntent()) {
+                    HStack(spacing: 12) {
+                        if header { Artwork(size: 32 * k) }
+                        VStack(alignment: .leading, spacing: 2) {
+                            if header { Text("Not watching").sfont(size: 16, weight: .semibold).foregroundStyle(.white) }
+                            Label("Hooks not installed — open Settings", systemImage: "gearshape.fill")
+                                .sfont(size: 13, weight: .medium).foregroundStyle(Island.amber)
+                        }
+                        .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 4).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else if !header {
                 Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)
                     .lineLimit(1).padding(.horizontal, 4)
             } else {

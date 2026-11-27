@@ -154,7 +154,8 @@ final class AppModel {
     func refreshQuota() async {
         guard !quotaRefreshing, case .subscription = billing else { return }
         quotaRefreshing = true
-        defer { quotaRefreshing = false; quotaFetchedAt = Date() }
+        reconcile()
+        defer { quotaFetchedAt = Date() }
         do {
             let q = try await UsageAPI.fetch()
             quota = q
@@ -164,6 +165,7 @@ final class AppModel {
             quotaError = error.localizedDescription
             activityTrace("quota refresh failed: \(error.localizedDescription)")
         }
+        quotaRefreshing = false
         reconcile()
     }
     func openUsageSettings() { settings.tab = .integration; onOpenSettings?() }
@@ -324,12 +326,25 @@ final class AppModel {
         activityTrace("auto page \(islandPage + 1)/\(st.pages)")
     }
 
+    private func makeState(page: Int) -> NotchActivityState {
+        var note: NotchActivityState.LimitsNote?
+        if quotaRefreshing {
+            note = .refreshing
+        } else if quotaError != nil {
+            note = .failed
+        } else if quotaNow == nil, planName == nil {
+            note = .notApplicable
+        }
+        return NotchActivityState.make(
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: page, limitsNote: note,
+            hooksInstalled: hooksInstalled)
+    }
+
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
         if snapshotOnly { return }
-        var state = NotchActivityState.make(
-            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+        var state = makeState(page: islandPage)
         state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -342,8 +357,7 @@ final class AppModel {
         if alert != nil { holdPage() }
         if alert != nil, state.page != 0 {
             islandPage = 0
-            state = NotchActivityState.make(
-                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+            state = makeState(page: 0)
             state.scale = prefs.islandSize.scale
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
