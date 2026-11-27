@@ -19,7 +19,7 @@ bundle: ## Build dist/Notchbot.app (Xcode 27.3+, needs a signing team; see scrip
 	./scripts/bundle.sh
 
 install: bundle ## Build and install to /Applications (local dev-signed copy, not notarized)
-	-pkill -x Notchbot
+	-pkill -x Notchbot; pkill -x NotchbotWidget
 	rm -rf /Applications/Notchbot.app
 	cp -R dist/Notchbot.app /Applications/
 	open /Applications/Notchbot.app
