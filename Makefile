@@ -1,4 +1,4 @@
-.PHONY: help build test lint format bundle demo snapshots clean
+.PHONY: help build test lint format bundle demo snapshots release prerelease clean
 
 help: ## List targets
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -23,6 +23,12 @@ demo: bundle ## Launch the app with synthetic agents (no hooks needed)
 
 snapshots: bundle ## Re-render docs/screens/*.png from the demo data (offscreen)
 	dist/ClaudeNotch.app/Contents/MacOS/ClaudeNotch --snapshot docs/screens
+
+release: ## Signed, notarized stable release of VERSION: GitHub Release + Homebrew cask (see docs/RELEASING.md)
+	./scripts/release.sh
+
+prerelease: ## Signed, notarized prerelease build of HEAD (tag build-N), no cask update
+	./scripts/release.sh --prerelease
 
 clean: ## Remove build output
 	rm -rf .build build dist ClaudeNotch.xcodeproj

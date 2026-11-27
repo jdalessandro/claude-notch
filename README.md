@@ -43,14 +43,46 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 
 ## Requirements
 
-- A Mac running **macOS 27.3 or later** (Live Activities on the Mac) with Xcode 27.3+ to build. Best on a notched MacBook Pro.
-- An Apple developer team for signing (a free Personal Team is enough for local builds): the Allow / Deny buttons are App Intents, which the system only runs for properly signed apps.
+- A Mac running **macOS 27.3 or later** (Live Activities on the Mac). Best on a notched MacBook Pro.
 - **Claude Code** (CLI and/or the Claude desktop app's Code tab).
-- To build: the Swift 6 toolchain (Xcode or just the Command Line Tools).
+
+That's all. Releases are signed with a Developer ID and notarized, so you don't need Xcode or an Apple developer account.
 
 ## Install
 
-There are no binary releases yet; build from source:
+**Homebrew**
+
+```bash
+brew install --cask jdalessandro/tap/claude-notch
+```
+
+**One-line script** (downloads the latest release, checks its SHA-256, copies the app to `/Applications`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jdalessandro/claude-notch/main/scripts/install.sh | bash
+```
+
+**Manual:** download `ClaudeNotch-<version>.dmg` from [Releases](https://github.com/jdalessandro/claude-notch/releases),
+open it and drag **ClaudeNotch** to Applications.
+
+> Releases are being set up; until the first one is published, [build from source](#build-from-source).
+
+The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
+the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
+
+Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
+already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
+at `settings.json.claude-notch.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
+If you installed with Homebrew, run that in-app uninstall *before* `brew uninstall --cask claude-notch`: brew removes the
+app but not the hooks it added to `~/.claude/settings.json`.
+
+**Just want to look around?** `make demo` launches the app with synthetic agents and no setup.
+
+### Build from source
+
+For contributors, or until a release exists. You need Xcode 27.3+ and an Apple developer team (a free Personal Team is
+enough for local builds). Ad-hoc signing isn't: the island's Allow / Deny buttons are App Intents, which the system only
+runs for properly signed apps.
 
 ```bash
 git clone https://github.com/jdalessandro/claude-notch.git
@@ -59,15 +91,6 @@ echo YOUR_TEAM_ID > .xcode-team   # 10 characters, from Xcode ▸ Settings ▸ A
 make bundle                       # generates the Xcode project and builds dist/ClaudeNotch.app
 open dist/ClaudeNotch.app
 ```
-
-The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
-the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
-
-Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
-already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
-at `settings.json.claude-notch.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
-
-**Just want to look around?** `make demo` launches the app with synthetic agents and no setup.
 
 ## How it works
 
@@ -132,7 +155,7 @@ Open from the menu-bar icon, the *Sessions* window's **⋯ ▸ Settings…**, or
 | Nothing appears | Is the app running (menu-bar sparkle)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
 | Island missing | Menu bar ▸ **Show Island**. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
-| Allow / Deny do nothing | The build must be signed with a real team (see Requirements); ad-hoc signed builds can't run App Intents. |
+| Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
 | No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Claude Notch leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
 | Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
@@ -180,7 +203,7 @@ file permissions, refuses to touch unexpected JSON shapes, skips no-op writes, a
 ## Roadmap
 
 Launch or resume agents from the island (Agent SDK) · send a quick follow-up prompt · spend-limit row for API plans ·
-signed and notarized releases · launch at login.
+Sparkle auto-update · launch at login.
 
 ## License
 

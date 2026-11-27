@@ -1,4 +1,4 @@
-# Template for the tap: Casks/claude-notch.rb (placeholders are filled in by release-cask.yml).
+# Template for the tap: Casks/claude-notch.rb (the placeholders in quotes are filled in by release.yml).
 cask "claude-notch" do
   version "VERSION"
   sha256 "SHA256"
