@@ -440,8 +440,10 @@ struct SessionRow: View {
         VStack(alignment: .leading, spacing: 5) {
             Button(intent: OpenSessionIntent(sessionId: row.id)) {
                 HStack(spacing: 6) {
-                    Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-                        .layoutPriority(1)
+                    if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                            .layoutPriority(1)
+                    }
                     if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
                     Spacer(minLength: 6)
                     status

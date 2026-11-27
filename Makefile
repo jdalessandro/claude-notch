@@ -1,4 +1,4 @@
-.PHONY: help build test lint format bundle demo snapshots release prerelease clean
+.PHONY: help build test lint format bundle install demo snapshots release prerelease clean
 
 help: ## List targets
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -17,6 +17,12 @@ format: ## Auto-format in place
 
 bundle: ## Build dist/Notchbot.app (Xcode 27.3+, needs a signing team; see scripts/bundle.sh)
 	./scripts/bundle.sh
+
+install: bundle ## Build and install to /Applications (local dev-signed copy, not notarized)
+	-pkill -x Notchbot
+	rm -rf /Applications/Notchbot.app
+	cp -R dist/Notchbot.app /Applications/
+	open /Applications/Notchbot.app
 
 demo: bundle ## Launch the app with synthetic agents (no hooks needed)
 	open -n dist/Notchbot.app --args --demo
