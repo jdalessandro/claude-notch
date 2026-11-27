@@ -61,7 +61,6 @@ for t in targets.values():
     t["src_bf"] = [buildfile(ref[f]) for f in t["srcs"]]
 for t in (hook, widget, app):
     t["link_bf"] = [buildfile(core["product"])]
-app["res_bf"] = [buildfile(ref["App/AppIcon.icns"])]
 embed_ext = buildfile(widget["product"], "ATTRIBUTES = (RemoveHeadersOnCopy, CodeSignOnCopy, );")
 copy_hook = buildfile(hook["product"], "ATTRIBUTES = (CodeSignOnCopy, );")
 
@@ -74,6 +73,7 @@ def depend(t, on):
 for t in (hook, widget, app): depend(t, core)
 depend(app, widget); depend(app, hook)
 EMB, CPH = uid(), uid()
+icon_bf = buildfile(ref["App/AppIcon.icns"]) + ", "
 
 def settings(d): return "{\n" + "".join("\t\t\t\t%s = %s;\n" % (k, v) for k, v in sorted(d.items())) + "\t\t\t}"
 common = {"SDKROOT": "macosx", "MACOSX_DEPLOYMENT_TARGET": "27.3", "SWIFT_VERSION": "6.0", "ARCHS": "arm64", "ONLY_ACTIVE_ARCH": "YES",
@@ -120,7 +120,7 @@ for t in targets.values():
       t["id"], t["cl"], ", ".join(phases), "".join(d + ", " for d in t["deps"]), q(t["name"]), q(t["name"]), t["product"], q(t["ptype"]))
 sect("PBXNativeTarget", nt)
 sect("PBXProject", "\t\t%s = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2700; }; buildConfigurationList = %s; compatibilityVersion = \"Xcode 14.0\"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = %s; productRefGroup = %s; projectDirPath = \"\"; projectRoot = \"\"; targets = (%s, ); };\n" % (PROJ, CL_PROJ, G_ROOT, G_PROD, ", ".join(t["id"] for t in targets.values())))
-sect("PBXResourcesBuildPhase", "".join("\t\t%s = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (%s); runOnlyForDeploymentPostprocessing = 0; };\n" % (t["rphase"], "".join(b + ", " for b in t.get("res_bf", []))) for t in targets.values()))
+sect("PBXResourcesBuildPhase", "".join("\t\t%s = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (%s); runOnlyForDeploymentPostprocessing = 0; };\n" % (t["rphase"], icon_bf if t is app else "") for t in targets.values()))
 sect("PBXSourcesBuildPhase", "".join(
   "\t\t%s = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (%s); runOnlyForDeploymentPostprocessing = 0; };\n" % (t["sphase"], "".join(b + ", " for b in t["src_bf"])) for t in targets.values()))
 sect("PBXTargetDependency", "".join(tdeps))

@@ -11,7 +11,6 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     let settingsWindow = SettingsWindowController()
-    let detailWindow = DetailWindowController()
     var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -28,9 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenSettings = { [weak self] in
             guard let self else { return }; self.settingsWindow.show(model: self.model)
         }
-        model.onShowWindow = { [weak self] in
-            guard let self else { return }; self.detailWindow.show(model: self.model)
-        }
         IntentBridge.handler = { [weak self] action, sid, rid in self?.model.handleIntent(action, sessionId: sid, requestId: rid) }
         model.start(demo: demo)
 
@@ -43,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         icon?.accessibilityDescription = "NotchBot"
         item.button?.image = icon
         let menu = NSMenu()
-        menu.addItem(withTitle: "Sessions…", action: #selector(showWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Show Island", action: #selector(showIsland), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -52,8 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         statusItem = item
 
-        // Starting the activity needs the app frontmost; activating as a regular app is enough, no window. The
-        // sessions window only opens as a fallback when the island can't start.
+        // Starting the activity needs the app frontmost; activating as a regular app is enough, no window. Once the
+        // island is up (or has had its chance), tuck away; "Show Island" in the menu retries.
         Task { @MainActor in
             await model.island.resetExisting()
             for _ in 0..<30 {
@@ -61,10 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.reconcile()
                 if model.island.isLive { break }
             }
-            if model.island.isLive, !CommandLine.arguments.contains("--regular") {
+            if !CommandLine.arguments.contains("--regular") {
                 NSApp.setActivationPolicy(.accessory)
-            } else if !model.island.isLive {
-                detailWindow.show(model: model)
             }
         }
     }
@@ -81,28 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = sem.wait(timeout: .now() + 1)
     }
 
-    @objc func showWindow() { detailWindow.show(model: model) }
     @objc func showIsland() { model.showIsland() }
     @objc func openSettings() { settingsWindow.show(model: model) }
-}
-
-@MainActor
-final class DetailWindowController {
-    private var window: NSWindow?
-    func show(model: AppModel) {
-        if window == nil {
-            let w = NSWindow(contentViewController: NSHostingController(rootView: DetailView(model: model)))
-            w.title = "NotchBot"
-            w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            w.setContentSize(NSSize(width: 460, height: 640))
-            w.isReleasedWhenClosed = false
-            w.center()
-            window = w
-        }
-        NSApp.activate()
-        window?.makeKeyAndOrderFront(nil)
-    }
-    func hide() { window?.orderOut(nil) }
 }
 
 let app = NSApplication.shared
