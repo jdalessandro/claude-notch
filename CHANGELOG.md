@@ -40,7 +40,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - A refresh button beside the island's plan limits (re-reads usage now).
 - `make snapshots` renders the island views from the demo data to `docs/screens/` (`Notchbot --snapshot <dir>`).
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-27
 
 ### Added
 - Dynamic-Island-style overlay for the MacBook display cutout (floating or attached), with a collapsed
