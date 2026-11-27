@@ -3,9 +3,6 @@ import Foundation
 /// Flags requests an engineer should read in full before approving. Heuristic and deliberately conservative: a
 /// false positive only costs one extra look at the full card, a false negative is the thing to avoid.
 public enum CommandRisk {
-    /// Commands longer than this don't fit the one-line inline row, so they get the full card first.
-    public static let inlineLimit = 48
-
     private static let patterns: [NSRegularExpression] = [
         #"\brm\s+(-[a-zA-Z]*\s+)*-[a-zA-Z]*[rR]"#,  // rm -rf, rm -fr, rm -r
         #"\brm\s+.*--recursive"#,
@@ -81,5 +78,63 @@ public enum IslandGuard {
     public static func allowAccepted(visibleSince: Date?, now: Date = .now) -> Bool {
         guard let visibleSince else { return true }
         return now.timeIntervalSince(visibleSince) >= tapDelay
+    }
+}
+
+/// Two-step Allow for a destructive request: the first tap arms ("Allow" turns into "Confirm"), a second tap on the
+/// same request, a beat later and before the timeout, answers. Anything else (Deny, another request, the timeout)
+/// disarms. Lives in the app; the island only draws `NotchActivityState.Prompt.confirming`.
+public struct AllowConfirmation: Sendable {
+    /// An armed Allow lapses after this long, so a forgotten arming can't be completed by a stray tap later.
+    public static let timeout: TimeInterval = 6
+    /// A second tap sooner than this after arming is ignored: the system may deliver one tap's intent twice.
+    public static let minGap: TimeInterval = 0.5
+
+    public enum Outcome: Sendable, Equatable {
+        /// Answer the request now.
+        case allow
+        /// The request is now waiting for its confirming tap; show "Confirm".
+        case armed
+        /// A duplicate delivery of the arming tap; do nothing.
+        case ignored
+    }
+
+    public private(set) var requestId: String?
+    private var armedAt: Date?
+
+    public init() {}
+
+    /// The request that is currently armed, nil when none or when its time has run out.
+    public func armedRequest(now: Date = .now) -> String? {
+        guard let requestId, let armedAt, now.timeIntervalSince(armedAt) <= Self.timeout else { return nil }
+        return requestId
+    }
+
+    /// An Allow tap. A request that is not destructive is answered at once.
+    public mutating func tap(requestId: String, destructive: Bool, now: Date = .now) -> Outcome {
+        guard destructive else {
+            clear()
+            return .allow
+        }
+        if let armedAt, self.requestId == requestId, armedRequest(now: now) == requestId {
+            guard now.timeIntervalSince(armedAt) >= Self.minGap else { return .ignored }
+            clear()
+            return .allow
+        }
+        self.requestId = requestId
+        armedAt = now
+        return .armed
+    }
+
+    public mutating func clear() {
+        requestId = nil
+        armedAt = nil
+    }
+
+    /// Drops a lapsed arming; true when there was one (the island must redraw "Allow").
+    public mutating func expire(now: Date = .now) -> Bool {
+        guard requestId != nil, armedRequest(now: now) == nil else { return false }
+        clear()
+        return true
     }
 }

@@ -56,7 +56,7 @@ import Testing
         #expect(s.sessions["a"]?.pending?.commandLength == long.count)
     }
 
-    @Test func rowsAskForReviewWhenDestructiveOrTruncated() {
+    @Test func rowsFlagDestructiveRequests() {
         var s = SessionStore()
         for (sid, cmd) in [("a", "rm -rf build"), ("b", String(repeating: "x", count: 80)), ("c", "ls")] {
             _ = s.apply(ev("UserPromptSubmit", sid: sid) { $0.prompt = "go" })
@@ -70,8 +70,8 @@ import Testing
         let pages = (0..<2).map { NotchActivityState.make(sessions: s.active, quota: nil, page: $0, featuredRequestId: c) }
         #expect(pages[0].prompt?.sessionId == "c")
         let byId = Dictionary(uniqueKeysWithValues: pages.flatMap(\.rows).map { ($0.id, $0) })
-        #expect(byId["a"]?.reviewFirst == true && byId["a"]?.destructive == true)
-        #expect(byId["b"]?.reviewFirst == true && byId["b"]?.destructive == false)
+        #expect(byId["a"]?.destructive == true && byId["a"]?.requestId != nil)
+        #expect(byId["b"]?.destructive == false)
     }
 
     @Test func promptCarriesBranchAndSubagentType() {
@@ -112,5 +112,68 @@ import Testing
         #expect(!IslandGuard.allowAccepted(visibleSince: now, now: now.addingTimeInterval(0.5)))
         #expect(IslandGuard.allowAccepted(visibleSince: now, now: now.addingTimeInterval(0.9)))
         #expect(IslandGuard.allowAccepted(visibleSince: nil))
+    }
+
+    @Test func plainAllowAnswersAtOnce() {
+        var c = AllowConfirmation()
+        let r1 = c.tap(requestId: "r", destructive: false)
+        #expect(r1 == .allow)
+        #expect(c.armedRequest() == nil)
+    }
+
+    @Test func destructiveAllowNeedsASecondTap() {
+        var c = AllowConfirmation()
+        let t0 = Date()
+        let r2 = c.tap(requestId: "r", destructive: true, now: t0)
+        #expect(r2 == .armed)
+        #expect(c.armedRequest(now: t0.addingTimeInterval(1)) == "r")
+        // A duplicate delivery of the first tap must not confirm.
+        let r3 = c.tap(requestId: "r", destructive: true, now: t0.addingTimeInterval(0.2))
+        #expect(r3 == .ignored)
+        #expect(c.armedRequest(now: t0.addingTimeInterval(1)) == "r")
+        let r4 = c.tap(requestId: "r", destructive: true, now: t0.addingTimeInterval(1))
+        #expect(r4 == .allow)
+        #expect(c.armedRequest(now: t0.addingTimeInterval(1)) == nil)
+    }
+
+    @Test func confirmationLapsesAndIsPerRequest() {
+        var c = AllowConfirmation()
+        let t0 = Date()
+        _ = c.tap(requestId: "a", destructive: true, now: t0)
+        let late = t0.addingTimeInterval(AllowConfirmation.timeout + 1)
+        #expect(c.armedRequest(now: late) == nil)
+        let lapsed = c.expire(now: late)
+        let again = c.expire(now: late)
+        #expect(lapsed && !again)
+        // After the timeout a tap arms again instead of answering.
+        _ = c.tap(requestId: "a", destructive: true, now: t0)
+        let r5 = c.tap(requestId: "a", destructive: true, now: late)
+        #expect(r5 == .armed)
+        // A tap for another request arms that one; it never completes the first.
+        let r6 = c.tap(requestId: "b", destructive: true, now: late.addingTimeInterval(1))
+        #expect(r6 == .armed)
+        #expect(c.armedRequest(now: late.addingTimeInterval(1)) == "b")
+        c.clear()
+        #expect(c.armedRequest(now: late.addingTimeInterval(1)) == nil)
+    }
+
+    @Test func promptShowsConfirmOnlyForTheArmedDestructiveRequest() {
+        var s = SessionStore()
+        for (sid, cmd) in [("a", "rm -rf build"), ("b", "ls")] {
+            _ = s.apply(ev("UserPromptSubmit", sid: sid) { $0.prompt = "go" })
+            _ = s.apply(
+                ev("PermissionRequest", sid: sid, expectsReply: true) {
+                    $0.toolName = "Bash"; $0.toolInput = .object(["command": .string(cmd)])
+                })
+        }
+        let a = s.sessions["a"]!.pending!.id.uuidString
+        let b = s.sessions["b"]!.pending!.id.uuidString
+        let armed = NotchActivityState.make(sessions: s.active, quota: nil, featuredRequestId: a, confirmingRequestId: a)
+        #expect(armed.prompt?.sessionId == "a" && armed.prompt?.confirming == true && armed.prompt?.sessionScope == nil)
+        let other = NotchActivityState.make(sessions: s.active, quota: nil, featuredRequestId: a, confirmingRequestId: b)
+        #expect(other.prompt?.confirming == false)
+        // A non-destructive request is never in the confirming state.
+        let plain = NotchActivityState.make(sessions: s.active, quota: nil, featuredRequestId: b, confirmingRequestId: b)
+        #expect(plain.prompt?.confirming == false)
     }
 }

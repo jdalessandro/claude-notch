@@ -104,6 +104,7 @@ final class AppModel {
             Task { @MainActor in
                 self?.island.beat()
                 self?.autoPage()
+                self?.expireConfirmation()
             }
         }
         if demo {
@@ -324,21 +325,29 @@ final class AppModel {
 
     /// A request the user chose to see in full ("Review"); it takes the featured card while it is live.
     private var reviewRequestId: String?
-    /// When each request on screen (card or inline row) became visible, and when the card last changed: Allow taps
-    /// right after a request appears, and page turns right after the card changes, are ignored (`IslandGuard`).
+    /// Allow on a destructive request is two taps ("Allow", then "Confirm"); this is the armed state between them.
+    private var confirmation = AllowConfirmation()
+    /// When the featured card's request became visible, and when the card last changed: Allow taps right after a
+    /// request appears on the card, and page turns right after the card changes, are ignored (`IslandGuard`). Rows
+    /// never answer, so only the card's request is tracked.
     private var visibleSince: [String: Date] = [:]
     private var promptChangedAt = Date.distantPast
     private var lastPromptId: String?
 
     private func trackVisibility(_ state: NotchActivityState) {
         let now = Date()
-        let ids = Set(([state.prompt?.requestId] + state.rows.map(\.requestId)).compactMap { $0 })
+        let ids = Set([state.prompt?.requestId].compactMap { $0 })
         visibleSince = visibleSince.filter { ids.contains($0.key) }
         for id in ids where visibleSince[id] == nil { visibleSince[id] = now }
         if state.prompt?.requestId != lastPromptId {
             lastPromptId = state.prompt?.requestId
             promptChangedAt = now
         }
+    }
+
+    /// Drops an armed "Confirm" that ran out of time and redraws "Allow".
+    private func expireConfirmation() {
+        if confirmation.expire() { reconcile() }
     }
 
     private func holdPage() {
@@ -370,7 +379,8 @@ final class AppModel {
         }
         return NotchActivityState.make(
             sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: page,
-            featuredRequestId: reviewRequestId, focus: prefs.showSubagents ? focusedSession : nil, limitsNote: note,
+            featuredRequestId: reviewRequestId, confirmingRequestId: confirmation.armedRequest(),
+            focus: prefs.showSubagents ? focusedSession : nil, limitsNote: note,
             hooksInstalled: hooksInstalled)
     }
 
@@ -380,6 +390,11 @@ final class AppModel {
         if snapshotOnly { return }
         if let r = reviewRequestId, !store.active.contains(where: { $0.isAnswerable(requestId: r) }) { reviewRequestId = nil }
         var state = makeState(page: islandPage)
+        // "Confirm" only ever belongs to the card on screen: another card or a finished request disarms it.
+        if confirmation.requestId != nil, confirmation.requestId != state.prompt?.requestId {
+            confirmation.clear()
+            state = makeState(page: islandPage)
+        }
         state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -438,13 +453,25 @@ final class AppModel {
                 activityTrace("allow ignored: request visible < \(IslandGuard.tapDelay)s")
                 return
             }
-            answer(sessionId, .allow)
+            switch confirmation.tap(requestId: requestId, destructive: s.pending?.destructive ?? false) {
+            case .allow: answer(sessionId, .allow)
+            case .armed: reconcile()  // "Allow" becomes "Confirm"
+            case .ignored: activityTrace("allow ignored: duplicate of the arming tap")
+            }
         case .review where s.isAnswerable(requestId: requestId):
+            // Rows never answer: "Review" moves the request to the card, where Allow / Deny live. The card's tap
+            // delay then applies from now, so the tap that brought it up can't also answer it.
+            confirmation.clear()
             reviewRequestId = requestId
             islandPage = 0
+            visibleSince[requestId] = nil
             reconcile()
-        case .deny where s.isAnswerable(requestId: requestId): answer(sessionId, .deny)
-        case .allowSession where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland: answerAllowForSession(sessionId)
+        case .deny where s.isAnswerable(requestId: requestId):
+            confirmation.clear()
+            answer(sessionId, .deny)
+        case .allowSession
+        where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland && s.pending?.destructive != true:
+            answerAllowForSession(sessionId)
         case .allow, .allowSession, .deny, .review: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }

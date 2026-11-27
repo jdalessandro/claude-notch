@@ -14,6 +14,15 @@ enum IslandSnapshots {
         let question = NotchActivityState.make(sessions: sessions, quota: quota)
         // Without the question, the subagent's permission request becomes the featured card.
         let permission = NotchActivityState.make(sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota)
+        // The destructive request after its first Allow tap: the button reads "Confirm".
+        let permissionId = permission.prompt?.requestId
+        let confirm = NotchActivityState.make(
+            sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, confirmingRequestId: permissionId)
+        // An ordinary (not destructive) approval, for the green Allow.
+        var allow = permission
+        allow.prompt?.destructive = false
+        allow.prompt?.text = "swift test --filter Retry"
+        allow.prompt?.sessionScope = "swift test"
         let working = NotchActivityState.make(
             sessions: sessions.filter { $0.status == .working || $0.status == .compacting }, quota: quota)
         let idle = NotchActivityState.make(sessions: [], quota: quota)
@@ -55,14 +64,16 @@ enum IslandSnapshots {
                 }
             }
         }
-        // A session's subagent tree in place of the list: without a request card, and under one (an amber subagent).
+        // A session's subagent tree in place of the list: without a request card, and under one (an orange subagent).
         let working3 = sessions.filter { $0.pending == nil }
         let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "infra-tools")
         let treeAsking = NotchActivityState.make(
             sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, focus: "web-dashboard")
         for (name, st) in [
             ("expanded-subagents", tree), ("expanded-subagents-permission", treeAsking),
-            ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
+            ("expanded-question", question), ("expanded-permission", permission), ("expanded-permission-confirm", confirm),
+            ("expanded-permission-allow", allow),
+            ("expanded-working", working),
             ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),
         ] {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))

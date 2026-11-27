@@ -56,10 +56,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         /// The tool a pending request is for ("Bash"), and whether a subagent asked.
         public var tool: String?
         public var fromSubagent: Bool
-        /// The pending command is high-risk, or too long for the inline row: show the full card before Allow / Deny.
+        /// The pending command is high-risk: flagged on the row, answered only on the featured card.
         public var destructive = false
-        public var truncated = false
-        public var reviewFirst: Bool { requestId != nil && (destructive || truncated) }
     }
 
     /// The most urgent request, shown as a card: a tool permission (Allow / Deny) or Claude asking a question.
@@ -84,6 +82,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var canAnswer: Bool
         public var branch: String?
         public var destructive = false
+        /// A destructive request whose Allow was tapped once: the button now reads "Confirm" (see `AllowConfirmation`).
+        public var confirming = false
         /// What "Allow for session" would cover ("npm install"); nil when the option isn't offered (never for a
         /// destructive command).
         public var sessionScope: String?
@@ -185,7 +185,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         }
     }
 
-    static func prompt(for s: AgentSession) -> Prompt? {
+    static func prompt(for s: AgentSession, confirming: String? = nil) -> Prompt? {
         guard let p = s.pending else { return nil }
         let q = p.question
         let opts = q?.options ?? []
@@ -198,18 +198,19 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             options: opts.prefix(maxOptions).map { clip($0, 22) }, moreOptions: max(0, opts.count - maxOptions),
             multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
             subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer, branch: s.displayBranch.map { clip($0, 22) },
-            destructive: p.destructive,
+            destructive: p.destructive, confirming: p.destructive && p.id.uuidString == confirming,
             sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil)
     }
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
-        featuredRequestId: String? = nil, focus: String? = nil, limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
+        featuredRequestId: String? = nil, confirmingRequestId: String? = nil, focus: String? = nil,
+        limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
     ) -> NotchActivityState {
         var st = build(
             sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: featuredRequestId,
-            focus: focus)
+            confirming: confirmingRequestId, focus: focus)
         st.limitsNote = limitsNote
         st.hooksMissing = !hooksInstalled
         return st
@@ -217,7 +218,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
 
     private static func build(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int, page: Int, featuredRequestId: String?,
-        focus: String?
+        confirming: String?, focus: String?
     ) -> NotchActivityState {
         let active = sessions.filter { $0.status != .ended }
         guard !active.isEmpty else {
@@ -234,7 +235,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         // A request the user asked to see in full ("Review") takes the card while it is still live.
         let chosen = featuredRequestId.flatMap { id in active.first { $0.pending?.id.uuidString == id } }
         let featured = chosen ?? active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
-        let prompt = featured.flatMap(prompt(for:))
+        let prompt = featured.flatMap { Self.prompt(for: $0, confirming: confirming) }
         let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
         let rest = active.filter { $0.id != featured?.id }
         // Pages wrap around, so "next" on the last page returns to the first.
@@ -249,7 +250,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
                 requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil,
                 branch: s.displayBranch.map { clip($0, 22) }, linesAdded: s.linesAdded, linesRemoved: s.linesRemoved,
                 tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil,
-                destructive: s.pending?.destructive ?? false, truncated: (s.pending?.commandLength ?? 0) > CommandRisk.inlineLimit)
+                destructive: s.pending?.destructive ?? false)
         }
         // A focused session's subagent tree replaces the session rows. A session that is gone or has no subagents
         // falls back to the list (the app then drops the focus).

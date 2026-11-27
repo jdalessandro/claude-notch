@@ -59,8 +59,8 @@ Uninstall the hooks **first**: removing the app does not remove the hooks it add
 ### A compact island that tells you the state
 
 The logo sits left of the cutout and a waveform on the right, one bar per working session (thinner bars for subagents).
-The waveform is **coral** while agents work, **amber** when something waits on you, and rests as dots when idle. A
-badge on the logo counts results waiting for your review.
+The waveform is **grey** while agents work, **orange** when something waits on you, and rests as dots when idle. A
+**blue** badge on the logo counts results waiting for your review. Red means negative: failed, destructive, Deny.
 
 <p align="center">
   <img src="docs/screens/compact-working.png" alt="Compact island while agents work" width="270">
@@ -81,7 +81,8 @@ It opens by itself when something needs you (and on a finished result, if you li
 </p>
 
 - **Approve from the island.** A permission request shows the exact command with **Allow / Deny**. Requests from a
-  subagent say so. A second pending request can be answered inline from its row.
+  subagent say so. Approvals are answered only on this card: any other waiting session shows a quiet **Review** that
+  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) keeps green **Allow** / red **Deny** but asks you to tap Allow twice (**Allow**, then **Confirm**).
 - **Questions.** When Claude asks you something, the island shows the question and its choices; **Answer in Claude**
   jumps to the session, **Not now** dismisses it.
 - **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,
@@ -91,7 +92,7 @@ It opens by itself when something needs you (and on a finished result, if you li
   the last one stops.
 - **Results to review.** When a turn finishes you see Claude's result, marked *Ready to review* until you reply in that
   session or tap **Done**. **Mark all reviewed** is in the island's **⋯** menu.
-- **Plan limits.** 5-hour, weekly and per-model weekly limits as bars with reset countdowns (blue, amber from 75%, red
+- **Plan limits.** 5-hour, weekly and per-model weekly limits as bars with reset countdowns (grey, orange from 75%, red
   from 90%), the way Claude Desktop shows them. Flip to token totals (last 5 hours, today, 7 days) with the
   **Limits | Tokens** toggle. Pro and Max hide dollars (you're metered by quota); API billing shows cost.
 - **Notifications** with sound and system banners for approval needed, waiting for input, finished and failed.
