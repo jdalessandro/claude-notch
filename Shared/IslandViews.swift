@@ -275,7 +275,7 @@ struct Badge<Label: View>: View {
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1)
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize()
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
@@ -303,7 +303,7 @@ struct Stat<Glyph: View, Value: View>: View {
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
             Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
         }
-        .monospacedDigit().lineLimit(1)
+        .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill(Color.white.opacity(0.08)))
         .fixedSize()
@@ -779,10 +779,10 @@ struct IslandIdle: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
-                    .monospacedDigit().lineLimit(1)
+                    .monospacedDigit().lineLimit(1).fixedSize()
             }
             Capsule().fill(Color.white.opacity(0.16)).frame(height: 6 * k)
                 .overlay(alignment: .leading) {
