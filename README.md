@@ -82,8 +82,8 @@ It opens by itself when something needs you (and on a finished result, if you li
 
 - **Approve from the island.** A permission request shows the exact command with **Allow / Deny**. Requests from a
   subagent say so. Approvals are answered only on this card: any other waiting session shows a quiet **Review** that
-  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) makes **Deny** the prominent button
-  and asks you to tap **Allow** twice (**Allow**, then **Confirm**).
+  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) tints **Allow** red
+  and asks you to tap it twice (**Allow**, then a filled red **Confirm**).
 - **Questions.** When Claude asks you something, the island shows the question and its choices; **Answer in Claude**
   jumps to the session, **Not now** dismisses it.
 - **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,

@@ -316,6 +316,8 @@ struct Pill: View {
     let title: String
     var tint: Color = .white
     var filled = false
+    /// Tinted text on a faint wash of the tint: a secondary action that carries a meaning (red for destructive).
+    var wash = false
     var height: CGFloat = 32
     var stretch = true
     @Environment(\.islandScale) private var k
@@ -325,7 +327,7 @@ struct Pill: View {
             .foregroundStyle(filled ? Color.black : tint == .white ? Color.white : tint)
             .padding(.horizontal, h * 0.45)
             .frame(maxWidth: stretch ? .infinity : nil, minHeight: h, maxHeight: h)
-            .background(Capsule().fill(filled ? tint : Color.white.opacity(0.14)))
+            .background(Capsule().fill(filled ? tint : wash ? tint.opacity(0.18) : Color.white.opacity(0.14)))
             .frame(minHeight: 24)
             .contentShape(Rectangle())
     }
@@ -498,8 +500,8 @@ struct PromptPanel: View {
         .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
-    /// The only place an approval is answered. A destructive request makes Deny the prominent button and Allow a
-    /// two-step: "Allow", then "Confirm" (red, for a few seconds). "Allow for session" is never offered for it.
+    /// The only place an approval is answered. Standard button roles: quiet Deny on the left, the action on the right. A destructive
+    /// request tints Allow red and makes it a two-step: "Allow", then a filled red "Confirm" for a few seconds. "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
@@ -526,7 +528,8 @@ struct PromptPanel: View {
                 .accessibilityLabel("Answer in Claude: \(p.session)")
             } else {
                 if p.confirming {
-                    Text("Tap Confirm to run it").sfont(size: 11, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1)
+                    Text("Confirm to run it · reverts in \(Int(AllowConfirmation.timeout))s").sfont(size: 11, weight: .medium)
+                        .foregroundStyle(Island.secondary).lineLimit(1)
                 } else if let scope = p.sessionScope {
                     // Quiet secondary option: a text link, not a third button. Names exactly what it covers.
                     Button(intent: AllowSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
@@ -536,14 +539,14 @@ struct PromptPanel: View {
                 }
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Deny", tint: .white, filled: p.destructive, height: 26, stretch: false)
+                    Pill(title: "Deny", height: 26, stretch: false)
                 }
                 .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     if p.confirming {
                         Pill(title: "Confirm", tint: Island.danger, filled: true, height: 26, stretch: false)
                     } else if p.destructive {
-                        Pill(title: "Allow", tint: .white, height: 26, stretch: false)
+                        Pill(title: "Allow", tint: Island.danger, wash: true, height: 26, stretch: false)
                     } else {
                         Pill(title: "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
                     }
