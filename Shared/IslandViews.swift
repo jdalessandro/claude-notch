@@ -54,8 +54,8 @@ enum Island {
     ///   orange  `waiting`  waiting for you (permission, question, input)
     ///   blue    `review`   a finished turn ready for review
     ///   grey    `running`  working (it moves with the `pulse` beat instead of changing colour)
-    ///   red     `danger`   failed, destructive, a nearly full limit
-    ///   green   `allow`    the affirmative Allow button, nothing else
+    ///   red     `danger`   negative: Deny, failed, destructive, a nearly full limit
+    ///   green   `allow`    positive: the Allow / Confirm buttons, nothing else
     ///   coral   brand: the robot logo only
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
@@ -500,8 +500,9 @@ struct PromptPanel: View {
         .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
-    /// The only place an approval is answered. Standard button roles: quiet Deny on the left, the action on the right. A destructive
-    /// request tints Allow red and makes it a two-step: "Allow", then a filled red "Confirm" for a few seconds. "Allow for session" is never offered for it.
+    /// The only place an approval is answered. Positive is green, negative is red, as users expect: red-tinted Deny on the left, Allow on
+    /// the right (filled green). A destructive request keeps those colours (the red "Destructive" pill carries the
+    /// danger) but makes Allow a two-step: a green-tinted "Allow", then a filled green "Confirm" for a few seconds. "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
@@ -539,14 +540,14 @@ struct PromptPanel: View {
                 }
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Deny", height: 26, stretch: false)
+                    Pill(title: "Deny", tint: Island.danger, wash: true, height: 26, stretch: false)
                 }
                 .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     if p.confirming {
-                        Pill(title: "Confirm", tint: Island.danger, filled: true, height: 26, stretch: false)
+                        Pill(title: "Confirm", tint: Island.allow, filled: true, height: 26, stretch: false)
                     } else if p.destructive {
-                        Pill(title: "Allow", tint: Island.danger, wash: true, height: 26, stretch: false)
+                        Pill(title: "Allow", tint: Island.allow, wash: true, height: 26, stretch: false)
                     } else {
                         Pill(title: "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
                     }

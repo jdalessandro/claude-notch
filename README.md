@@ -60,7 +60,7 @@ Uninstall the hooks **first**: removing the app does not remove the hooks it add
 
 The logo sits left of the cutout and a waveform on the right, one bar per working session (thinner bars for subagents).
 The waveform is **grey** while agents work, **orange** when something waits on you, and rests as dots when idle. A
-**blue** badge on the logo counts results waiting for your review. Red is kept for failures and destructive commands.
+**blue** badge on the logo counts results waiting for your review. Red means negative: failed, destructive, Deny.
 
 <p align="center">
   <img src="docs/screens/compact-working.png" alt="Compact island while agents work" width="270">
@@ -82,8 +82,7 @@ It opens by itself when something needs you (and on a finished result, if you li
 
 - **Approve from the island.** A permission request shows the exact command with **Allow / Deny**. Requests from a
   subagent say so. Approvals are answered only on this card: any other waiting session shows a quiet **Review** that
-  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) tints **Allow** red
-  and asks you to tap it twice (**Allow**, then a filled red **Confirm**).
+  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) keeps green **Allow** / red **Deny** but asks you to tap Allow twice (**Allow**, then **Confirm**).
 - **Questions.** When Claude asks you something, the island shows the question and its choices; **Answer in Claude**
   jumps to the session, **Not now** dismisses it.
 - **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,

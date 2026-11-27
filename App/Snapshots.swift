@@ -18,6 +18,11 @@ enum IslandSnapshots {
         let permissionId = permission.prompt?.requestId
         let confirm = NotchActivityState.make(
             sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, confirmingRequestId: permissionId)
+        // An ordinary (not destructive) approval, for the green Allow.
+        var allow = permission
+        allow.prompt?.destructive = false
+        allow.prompt?.text = "swift test --filter Retry"
+        allow.prompt?.sessionScope = "swift test"
         let working = NotchActivityState.make(
             sessions: sessions.filter { $0.status == .working || $0.status == .compacting }, quota: quota)
         let idle = NotchActivityState.make(sessions: [], quota: quota)
@@ -49,6 +54,7 @@ enum IslandSnapshots {
         for (name, st) in [
             ("expanded-subagents", tree), ("expanded-subagents-permission", treeAsking),
             ("expanded-question", question), ("expanded-permission", permission), ("expanded-permission-confirm", confirm),
+            ("expanded-permission-allow", allow),
             ("expanded-working", working),
             ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),
         ] {

@@ -18,7 +18,7 @@ there is no hover or scrolling inside it; you interact with buttons.
 
 **Compact view.** Logo on the left, waveform on the right: one bar per working session, thinner bars for subagents.
 Grey = agents are working, orange = something needs you, dots = idle. An optional blue badge on the logo counts results
-you haven't reviewed. Red only ever means failed or destructive.
+you haven't reviewed. Green is Allow, red is Deny, failed or destructive.
 
 **Expanded view.** It opens by itself when something needs you. From top to bottom:
 
