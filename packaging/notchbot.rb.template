@@ -1,4 +1,4 @@
-# Template for the tap: Casks/notchbot.rb (the placeholders in quotes are filled in by release.yml).
+# Template for the tap: Casks/notchbot.rb (the placeholders in quotes are filled in by scripts/release.sh).
 cask "notchbot" do
   version "VERSION"
   sha256 "SHA256"
@@ -13,7 +13,8 @@ cask "notchbot" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :tahoe"
+  depends_on arch: :arm64
+  depends_on macos: ">= :golden_gate" # macOS 27; the app itself enforces 27.3 via LSMinimumSystemVersion
 
   app "Notchbot.app"
 

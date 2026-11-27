@@ -39,6 +39,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ### Added
 - A refresh button beside the island's plan limits (re-reads usage now).
 - `make snapshots` renders the island views from the demo data to `docs/screens/` (`Notchbot --snapshot <dir>`).
+- **Signed, notarized releases** from a Mac: `make release` (GitHub Release + Homebrew cask) and `make prerelease`; the cask
+  requires Apple silicon and macOS 27.
 
 ## [0.1.0] - Unreleased
 
