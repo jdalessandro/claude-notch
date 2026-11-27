@@ -61,6 +61,28 @@ import Testing
         #expect(seen.value[0].payload.sessionId == "abc" && seen.value[0].termProgram == "iTerm.app" && seen.value[0].expectsReply)
     }
 
+    @Test func allowForSessionEmitsUpdatedPermissions() throws {
+        try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path), "build notchbot-hook first")
+        let path = "/tmp/cn-hook-sess-\(getpid()).sock"
+        let rule = JSONValue.object([
+            "type": .string("addRules"), "behavior": .string("allow"), "destination": .string("session"),
+            "rules": .array([.object(["toolName": .string("Bash"), "ruleContent": .string("npm test")])]),
+        ])
+        let server = NotchServer(path: path) { _, reply in reply?.send(HookReply(decision: .allow, updatedPermissions: [rule])) }
+        try server.start(); defer { server.stop() }
+        let r = try run(
+            stdin: #"{"session_id":"abc","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"npm test"}}"#,
+            args: ["--interactive"], socket: path)
+        let hso = (try JSONSerialization.jsonObject(with: Data(r.out.utf8)) as! [String: Any])["hookSpecificOutput"] as! [String: Any]
+        let d = hso["decision"] as! [String: Any]
+        #expect(d["behavior"] as? String == "allow")
+        let up = try #require(d["updatedPermissions"] as? [[String: Any]]).first
+        #expect(up?["type"] as? String == "addRules" && up?["destination"] as? String == "session" && up?["behavior"] as? String == "allow")
+        let rules = up?["rules"] as? [[String: Any]]
+        #expect(rules?.first?["toolName"] as? String == "Bash" && rules?.first?["ruleContent"] as? String == "npm test")
+        #expect(r.code == 0)
+    }
+
     @Test func nonInteractiveAndNoAppAreSilent() throws {
         try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path))
         // No server listening: must exit 0 with no output, quickly.

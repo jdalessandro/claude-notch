@@ -426,6 +426,13 @@ struct PromptPanel: View {
                     Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 26, stretch: false)
                 }
             } else {
+                if let scope = p.sessionScope {
+                    // Quiet secondary option: a text link, not a third button. Names exactly what it covers.
+                    Button(intent: AllowSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                        Text("Allow “\(scope)” for this session").sfont(size: 11, weight: .medium)
+                            .foregroundStyle(Island.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Deny", tint: Island.red, height: 26, stretch: false)

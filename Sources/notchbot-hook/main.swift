@@ -59,6 +59,11 @@ case .ask: exit(0)  // no output => Claude Code shows its normal prompt
 case .allow, .deny:
     var decision: [String: Any] = ["behavior": reply.decision.rawValue]
     if reply.decision == .deny { decision["message"] = reply.reason ?? "Denied from Notchbot" }
+    if reply.decision == .allow, let u = reply.updatedPermissions, !u.isEmpty,
+        let d = try? JSONEncoder().encode(u), let obj = try? JSONSerialization.jsonObject(with: d)
+    {
+        decision["updatedPermissions"] = obj
+    }
     let out: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision]]
     if let d = try? JSONSerialization.data(withJSONObject: out) { FileHandle.standardOutput.write(d) }
     exit(0)
