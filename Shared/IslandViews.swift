@@ -161,9 +161,9 @@ struct AgentWave: View {
         let main = min(agents, Self.maxBars)
         let subs = min(subagents, Self.maxBars - main)
         if main + subs == 0 {
-            HStack(spacing: height * 0.16) {
+            HStack(spacing: height * 0.2) {
                 ForEach(0..<5, id: \.self) { _ in
-                    Circle().fill(Color.white.opacity(0.4)).frame(width: height * 0.15, height: height * 0.15)
+                    Circle().fill(Color.white.opacity(0.7)).frame(width: height * 0.2, height: height * 0.2)
                 }
             }
             .frame(height: height)
