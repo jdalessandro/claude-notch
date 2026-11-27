@@ -165,7 +165,7 @@ struct Artwork: View {
         RobotView()
             .frame(width: size, height: size)
             // Kept inside the frame: the compact region clips anything that sticks out.
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .topTrailing) {
                 if badge > 0 {
                     Text("\(badge)").font(.system(size: max(8, size * 0.36), weight: .bold, design: .rounded))
                         .foregroundStyle(.black).monospacedDigit()
@@ -765,7 +765,7 @@ struct IslandIdle: View {
                 .padding(.horizontal, 4)
             }
             if state.fiveHour != nil || state.weekly != nil {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .bottom, spacing: 16) {
                     if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset, hm: true) }
                     if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
                 }
@@ -779,9 +779,10 @@ struct IslandIdle: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
-                    .monospacedDigit()
+                    .monospacedDigit().lineLimit(1)
             }
             Capsule().fill(Color.white.opacity(0.16)).frame(height: 6 * k)
                 .overlay(alignment: .leading) {
@@ -805,7 +806,7 @@ struct IslandIdle: View {
 /// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: Island.compactIcon) }
+    var body: some View { Artwork(size: Island.compactIcon, badge: state.reviews) }
 }
 
 struct IslandCompactTrailing: View {

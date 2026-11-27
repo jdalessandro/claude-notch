@@ -96,6 +96,14 @@ struct GeneralTab: View {
             }
 
             Section {
+                Toggle("Show a review badge on the logo", isOn: $settings.prefs.showReviewBadge)
+            } header: {
+                Text("Compact island")
+            } footer: {
+                hint("A number on the robot counts finished sessions waiting for you to review.")
+            }
+
+            Section {
                 Toggle("Raise the island when something needs you", isOn: $settings.prefs.autoExpandOnEvents)
                 Picker("Forget idle sessions after", selection: $settings.prefs.sessionRetention) {
                     Text("1 hour").tag(Preferences.SessionRetention.oneHour)

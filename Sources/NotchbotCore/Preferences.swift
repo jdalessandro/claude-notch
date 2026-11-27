@@ -34,6 +34,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var showSubagents = true
     public var showContextMeter = true
     public var showUsageCard = true
+    public var showReviewBadge = true
     // Behavior
     public var autoExpandOnEvents = true
     public var sessionRetention = SessionRetention.twelveHours
@@ -80,7 +81,7 @@ public struct Preferences: Codable, Equatable, Sendable {
             if let v = try? c.decode(T.self, forKey: AnyKey(key)) { self[keyPath: kp] = v }
         }
         load(\.islandSize, "islandSize"); load(\.showPrompt, "showPrompt"); load(\.showSubagents, "showSubagents")
-        load(\.showContextMeter, "showContextMeter"); load(\.showUsageCard, "showUsageCard")
+        load(\.showContextMeter, "showContextMeter"); load(\.showUsageCard, "showUsageCard"); load(\.showReviewBadge, "showReviewBadge")
         load(\.autoExpandOnEvents, "autoExpandOnEvents")
         load(\.sessionRetention, "sessionRetention")
         load(\.soundEnabled, "soundEnabled"); load(\.systemNotifications, "systemNotifications")

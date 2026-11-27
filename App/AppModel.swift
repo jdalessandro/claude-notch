@@ -348,6 +348,7 @@ final class AppModel {
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
+        if !prefs.showReviewBadge { state.reviews = 0 }
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
