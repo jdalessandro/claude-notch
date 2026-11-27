@@ -155,111 +155,6 @@ import Testing
         }
     }
 
-    @Test func offPageNeedCountsRequestsOnOtherPages() {
-        // a and d wait on approval, b and c work. One row per page under the featured prompt.
-        let s = store { st in
-            approval("a")(&st)
-            _ = st.apply(ev("UserPromptSubmit", sid: "b") { $0.prompt = "go" })
-            _ = st.apply(ev("UserPromptSubmit", sid: "c") { $0.prompt = "go" })
-            approval("d")(&st)
-        }
-        let pages = (0..<3).map { NotchActivityState.make(sessions: s.active, quota: nil, page: $0) }
-        #expect(pages.allSatisfy { $0.pages == 3 && $0.rows.count == 1 })
-        // Page 0 shows the other approval (urgent rows sort first), so nothing needing you is hidden; on the others it is.
-        #expect(pages.map(\.offPageNeed) == [0, 1, 1])
-    }
-
-    @Test func offPageNeedIsZeroOnASinglePage() {
-        let s = store {
-            approval("a")(&$0); _ = $0.apply(ev("UserPromptSubmit", sid: "b") { $0.prompt = "go" })
-        }
-        #expect(NotchActivityState.make(sessions: s.active, quota: nil).offPageNeed == 0)
-    }
-
-    @Test func offPageNeedIgnoresFinishedReviews() {
-        let s = store { st in
-            approval("a")(&st)
-            for i in 0..<3 {
-                _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" })
-            }
-        }
-        let st = NotchActivityState.make(sessions: s.active, quota: nil)
-        #expect(st.pages > 1 && st.offPageNeed == 0)
-    }
-
-    @Test func offPageNeedNeverExceedsTheHeaderAndAgreesAcrossPages() {
-        // approvals, a failure, a review and workers: every page's hint stays within the header's count.
-        let s = store { st in
-            approval("a")(&st); approval("b")(&st)
-            _ = st.apply(ev("UserPromptSubmit", sid: "f") { $0.prompt = "go" })
-            _ = st.apply(ev("StopFailure", sid: "f"))
-            for i in 0..<3 { _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" }) }
-        }
-        for p in 0..<6 {
-            let st = NotchActivityState.make(sessions: s.active, quota: nil, page: p)
-            #expect(st.offPageNeed <= st.needsYou, "page \(p)")
-            let shownNeeds = st.rows.filter { [.approval, .question, .input, .failed].contains($0.kind) }.count
-            let featured = st.prompt == nil ? 0 : 1
-            #expect(st.offPageNeed + shownNeeds + featured == s.active.filter { $0.status.needsAttention }.count, "page \(p)")
-        }
-    }
-
-    @Test func failedSessionsOnOtherPagesCountAsWaiting() {
-        let s = store { st in
-            for i in 0..<4 { _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" }) }
-            _ = st.apply(ev("StopFailure", sid: "w0"))
-        }
-        #expect(s.active.contains { $0.status == .failed }, "the fixture really has a failed session")
-        let all = (0..<2).map { NotchActivityState.make(sessions: s.active, quota: nil, maxRows: 2, page: $0) }
-        // The failed session is on exactly one page; the other page's hint counts it, its own page's does not.
-        #expect(all.map(\.offPageNeed).sorted() == [0, 1])
-        #expect(all.map(\.needsYou).allSatisfy { $0 == 1 })
-    }
-
-    @Test func needPagePointsAtTheNearestWaitingPageAndWraps() {
-        let s = store { st in
-            approval("a")(&st)
-            for i in 0..<3 { _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" }) }
-            approval("b")(&st)
-        }
-        let p0 = NotchActivityState.make(sessions: s.active, quota: nil, page: 0)
-        let p2 = NotchActivityState.make(sessions: s.active, quota: nil, page: 2)
-        if p0.offPageNeed > 0 { #expect(p0.needPage != nil && p0.needPage != p0.page) }
-        let waitingPages = (0..<p2.pages).filter { p in
-            NotchActivityState.make(sessions: s.active, quota: nil, page: p).rows.contains { $0.kind == .approval }
-        }
-        #expect(!waitingPages.isEmpty)
-        // Jumping to the target shows a session waiting on you.
-        for p in 0..<p2.pages {
-            let st = NotchActivityState.make(sessions: s.active, quota: nil, page: p)
-            guard let t = st.needPage else { #expect(st.offPageNeed == 0); continue }
-            let there = NotchActivityState.make(sessions: s.active, quota: nil, page: t)
-            #expect(there.rows.contains { $0.kind == .approval || $0.kind == .failed || $0.kind == .input })
-        }
-    }
-
-    @Test func noHintWhenNothingWaitsElsewhere() {
-        let s = store { st in
-            for i in 0..<4 { _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" }) }
-        }
-        let st = NotchActivityState.make(sessions: s.active, quota: nil, maxRows: 2)
-        #expect(st.pages > 1 && st.offPageNeed == 0 && st.needPage == nil)
-    }
-
-    @Test func approvalOnAnotherPageIsCounted() {
-        let s = store { st in
-            approval("a")(&st)
-            _ = st.apply(ev("UserPromptSubmit", sid: "w") { $0.prompt = "go" })
-            approval("b")(&st)
-        }
-        // a is answerable and featured; w and b are rows, one per page. Whichever page is shown, the other row's need
-        // is counted only when it needs you.
-        let p0 = NotchActivityState.make(sessions: s.active, quota: nil, page: 0)
-        let p1 = NotchActivityState.make(sessions: s.active, quota: nil, page: 1)
-        let needRows = [p0, p1].map { $0.rows.filter { $0.kind == .approval }.count }
-        #expect(p0.offPageNeed + needRows[0] == 1 && p1.offPageNeed + needRows[1] == 1)
-    }
-
     @Test func limitsNoteAndHooksFlagPassThroughAndStayOutOfTheWayByDefault() throws {
         let plain = NotchActivityState.make(sessions: [], quota: nil)
         #expect(plain.limitsNote == nil && !plain.hooksMissing && plain.limitsUnknown)
@@ -325,13 +220,6 @@ import Testing
             #expect(st.rows.isEmpty, "the tree replaces the session rows")
             #expect(st.encodedSize < NotchActivityState.byteBudget)
         }
-    }
-
-    @Test func noHintWhileTheSubagentTreeReplacesTheRows() {
-        // The tree empties `rows`; nothing is "on another page" then, so the hint must not claim sessions.
-        let s = sessionWithSubagents(5, asking: true)
-        let st = NotchActivityState.make(sessions: s.active, quota: nil, focus: "tree")
-        #expect(st.rows.isEmpty && st.offPageNeed == 0 && st.needPage == nil)
     }
 
     @Test func aSubagentWaitingOnYouLeadsTheTreeAndIsAmber() {

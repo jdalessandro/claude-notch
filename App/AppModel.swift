@@ -422,14 +422,6 @@ final class AppModel {
             focusedSession = nil
             reconcile()
             return
-        case .nextNeedPage:
-            // The state's own `needPage` is the target; a stale tap (nothing waits elsewhere any more) does nothing.
-            guard let target = island.current?.needPage else { return }
-            activityTrace("intent need page \(target + 1)")
-            islandPage = target
-            focusedSession = nil
-            reconcile()
-            return
         case .focusSubagents:
             activityTrace("intent focus \(sessionId)")
             focusedSession = prefs.showSubagents && !sessionId.isEmpty && sessionId != focusedSession ? sessionId : nil
@@ -456,7 +448,7 @@ final class AppModel {
         case .allow, .allowSession, .deny, .review: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage, .nextNeedPage, .refreshQuota, .openSettings, .focusSubagents: break
+        case .nextPage, .previousPage, .refreshQuota, .openSettings, .focusSubagents: break
         }
     }
 
