@@ -56,6 +56,10 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         /// The tool a pending request is for ("Bash"), and whether a subagent asked.
         public var tool: String?
         public var fromSubagent: Bool
+        /// The pending command is high-risk, or too long for the inline row: show the full card before Allow / Deny.
+        public var destructive = false
+        public var truncated = false
+        public var reviewFirst: Bool { requestId != nil && (destructive || truncated) }
     }
 
     /// The most urgent request, shown as a card: a tool permission (Allow / Deny) or Claude asking a question.
@@ -78,6 +82,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var subagent: String?
         /// False when no hook is waiting for our answer: only "Open" is offered.
         public var canAnswer: Bool
+        public var branch: String?
+        public var destructive = false
     }
 
     public enum Phase: String, Codable, Sendable { case idle, working, needsYou, done }
@@ -167,12 +173,14 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             text: clip(text, 200), isQuestion: p.isQuestion, header: q?.header.map { clip($0, 20) },
             options: opts.prefix(maxOptions).map { clip($0, 22) }, moreOptions: max(0, opts.count - maxOptions),
             multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
-            subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer)
+            subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer, branch: s.displayBranch.map { clip($0, 22) },
+            destructive: p.destructive)
     }
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
-        sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0
+        sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
+        featuredRequestId: String? = nil
     ) -> NotchActivityState {
         let active = sessions.filter { $0.status != .ended }
         guard !active.isEmpty else {
@@ -186,7 +194,9 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         let needs = active.filter { $0.status.needsAttention || $0.needsReview }
         let working = active.filter { $0.status == .working || $0.status == .compacting }
         // Answerable requests first: those are the ones the island can settle.
-        let featured = active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
+        // A request the user asked to see in full ("Review") takes the card while it is still live.
+        let chosen = featuredRequestId.flatMap { id in active.first { $0.pending?.id.uuidString == id } }
+        let featured = chosen ?? active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
         let prompt = featured.flatMap(prompt(for:))
         let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
         let rest = active.filter { $0.id != featured?.id }
@@ -201,7 +211,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
                 tokens: s.usage.work, context: s.contextFraction.map { ($0 * 100).rounded() / 100 },
                 requestId: s.pending?.canAnswer == true ? s.pending?.id.uuidString : nil,
                 branch: s.displayBranch.map { clip($0, 22) }, linesAdded: s.linesAdded, linesRemoved: s.linesRemoved,
-                tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil)
+                tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil,
+                destructive: s.pending?.destructive ?? false, truncated: (s.pending?.commandLength ?? 0) > CommandRisk.inlineLimit)
         }
         let phase: Phase = !needs.isEmpty ? .needsYou : (!working.isEmpty ? .working : .done)
         let headline: String =

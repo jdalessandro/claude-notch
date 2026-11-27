@@ -5,7 +5,7 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshQuota, openSettings }
+    enum Action: Sendable { case allow, deny, open, review, nextPage, previousPage, refreshQuota, openSettings }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -44,6 +44,19 @@ struct OpenSessionIntent: LiveActivityIntent {
     init(sessionId: String, requestId: String = "") { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(.open, sessionId, requestId)
+        return .result()
+    }
+}
+
+/// Asks the app to feature a request as the full card (whole command, branch, risk) before it is answered.
+struct ReviewIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Review request"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.review, sessionId, requestId)
         return .result()
     }
 }

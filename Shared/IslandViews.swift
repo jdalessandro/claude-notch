@@ -41,7 +41,6 @@ enum Island {
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
-    static let badgeRed = Color(red: 1.0, green: 0.27, blue: 0.23)  // the system badge red
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -158,10 +157,10 @@ struct RobotView: View {
 }
 
 /// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
-/// the waveform carries that, and the round red badge counts sessions waiting for review.
+/// the waveform carries that, and the small green badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
-    /// Finished sessions waiting for review; a round red count on the robot's top right, like an app-icon badge.
+    /// Finished sessions waiting for review; a small green count on the robot's top right (red is kept for failures).
     var badge = 0
     var body: some View {
         // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
@@ -178,7 +177,7 @@ struct Artwork: View {
                         .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
                         .frame(minWidth: d, minHeight: d)
                         .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
-                        .background(Capsule().fill(Island.badgeRed))
+                        .background(Capsule().fill(Island.green))
                         .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
@@ -362,12 +361,20 @@ struct PromptPanel: View {
                 Text(p.session).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                 Spacer(minLength: 6)
                 if p.isQuestion {
-                    if let h = p.header { Badge(h) }
                     Badge("Question", tint: Island.amber, icon: "questionmark.bubble.fill")
                 } else {
-                    Badge(p.tool, icon: "terminal.fill")
-                    Badge(p.subagent == nil ? "Needs approval" : "Subagent asks", tint: Island.amber, icon: "lock.fill")
+                    Badge(p.subagent.map { "\($0) asks" } ?? "Needs approval", tint: Island.amber, icon: "lock.fill")
                 }
+            }
+            HStack(spacing: 6) {
+                if let b = p.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
+                if p.isQuestion {
+                    if let h = p.header { Badge(h) }
+                } else {
+                    Badge(p.tool, icon: "terminal.fill")
+                }
+                Spacer(minLength: 0)
+                if p.destructive { Badge("Destructive", tint: Island.red, icon: "exclamationmark.triangle.fill") }
             }
             if p.isQuestion { question } else { permission }
             actions
@@ -402,10 +409,13 @@ struct PromptPanel: View {
     }
 
     private var permission: some View {
-        Text(p.text).sfont(size: 12.5, weight: .medium, design: .monospaced).foregroundStyle(.white.opacity(0.92))
-            .lineLimit(2).padding(.horizontal, 10).padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(p.text).sfont(size: 12.5, weight: .medium, design: .monospaced).foregroundStyle(.white.opacity(0.92))
+                .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
     @ViewBuilder private var actions: some View {
@@ -496,6 +506,8 @@ struct SessionRow: View {
             Badge(tint: Island.coral) {
                 Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36 * k)
             }
+        } else if row.kind == .approval, row.destructive {
+            Badge("Destructive", tint: Island.red, icon: "exclamationmark.triangle.fill")
         } else {
             Badge(row.status, tint: row.kind == .idle ? nil : row.kind.tint)
         }
@@ -506,7 +518,12 @@ struct SessionRow: View {
         HStack(spacing: 5) {
             switch row.kind {
             case .approval:
-                if let r = row.requestId {
+                if let r = row.requestId, row.reviewFirst {
+                    // Too long for one line, or high-risk: read the whole command on the card before answering.
+                    Button(intent: ReviewIntent(sessionId: row.id, requestId: r)) {
+                        Pill(title: "Review", tint: row.destructive ? Island.red : Island.amber, filled: true, height: 24, stretch: false)
+                    }
+                } else if let r = row.requestId {
                     Button(intent: DenyIntent(sessionId: row.id, requestId: r)) {
                         Pill(title: "Deny", tint: Island.red, height: 24, stretch: false)
                     }
@@ -864,10 +881,11 @@ struct IslandIdle: View {
     }
 }
 
-/// The compact presentation: the logo on the left of the cutout, the waveform on the right.
+/// The compact presentation: the logo on the left of the cutout, on the right the waveform, or, when something needs
+/// you, a hand glyph and how many (shape and number, so it never relies on colour alone).
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: Island.compactIcon, badge: state.reviews) }
+    var body: some View { Artwork(size: Island.compactIcon, badge: state.compactReviews) }
 }
 
 struct IslandCompactTrailing: View {
@@ -875,6 +893,38 @@ struct IslandCompactTrailing: View {
     var body: some View {
         // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
         let h = Island.compactIcon * Island.compactWaveRatio
-        AgentWave(state: state, height: h).frame(width: 30, height: h)
+        if state.needsYou > 0 {
+            HStack(spacing: 2) {
+                Image(systemName: "hand.raised.fill").font(.system(size: 11, weight: .bold))
+                Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 12, weight: .bold, design: .rounded))
+                    .monospacedDigit().minimumScaleFactor(0.7).lineLimit(1)
+            }
+            .foregroundStyle(Island.amber).frame(width: 30, height: Island.compactIcon)
+        } else {
+            AgentWave(state: state, height: h).frame(width: 30, height: h)
+        }
     }
+}
+
+/// The minimal presentation (another Live Activity owns the island): the logo, or when something needs you the hand
+/// glyph with the count.
+struct IslandMinimal: View {
+    let state: NotchActivityState
+    var body: some View {
+        if state.needsYou > 0 {
+            HStack(spacing: 1) {
+                Image(systemName: "hand.raised.fill").font(.system(size: 9, weight: .bold))
+                Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 10, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(Island.amber).frame(width: Island.compactIcon, height: Island.compactIcon)
+        } else {
+            Artwork(size: Island.compactIcon, badge: state.compactReviews)
+        }
+    }
+}
+
+extension NotchActivityState {
+    /// Review count for the logo's badge; second priority, so it steps aside while anything needs you.
+    var compactReviews: Int { needsYou > 0 ? 0 : reviews }
 }

@@ -307,6 +307,25 @@ final class AppModel {
     private static let pageInterval: TimeInterval = 6
     private static let pageHold: TimeInterval = 20
 
+    /// A request the user chose to see in full ("Review"); it takes the featured card while it is live.
+    private var reviewRequestId: String?
+    /// When each request on screen (card or inline row) became visible, and when the card last changed: Allow taps
+    /// right after a request appears, and page turns right after the card changes, are ignored (`IslandGuard`).
+    private var visibleSince: [String: Date] = [:]
+    private var promptChangedAt = Date.distantPast
+    private var lastPromptId: String?
+
+    private func trackVisibility(_ state: NotchActivityState) {
+        let now = Date()
+        let ids = Set(([state.prompt?.requestId] + state.rows.map(\.requestId)).compactMap { $0 })
+        visibleSince = visibleSince.filter { ids.contains($0.key) }
+        for id in ids where visibleSince[id] == nil { visibleSince[id] = now }
+        if state.prompt?.requestId != lastPromptId {
+            lastPromptId = state.prompt?.requestId
+            promptChangedAt = now
+        }
+    }
+
     private func holdPage() {
         pageHoldUntil = Date().addingTimeInterval(Self.pageHold)
         lastPageTurn = Date()
@@ -315,8 +334,8 @@ final class AppModel {
     /// Called every second: turns to the next page when there is more than one and nobody is interacting.
     private func autoPage() {
         let now = Date()
-        guard let st = island.current, st.pages > 1, now >= pageHoldUntil,
-            now.timeIntervalSince(lastPageTurn) >= Self.pageInterval
+        guard let st = island.current, now >= pageHoldUntil, now.timeIntervalSince(lastPageTurn) >= Self.pageInterval,
+            IslandGuard.canAutoTurn(state: st, promptChangedAt: promptChangedAt, now: now)
         else { return }
         lastPageTurn = now
         islandPage += 1
@@ -328,8 +347,10 @@ final class AppModel {
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
         if snapshotOnly { return }
+        if let r = reviewRequestId, !store.active.contains(where: { $0.isAnswerable(requestId: r) }) { reviewRequestId = nil }
         var state = NotchActivityState.make(
-            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage,
+            featuredRequestId: reviewRequestId)
         state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -343,12 +364,14 @@ final class AppModel {
         if alert != nil, state.page != 0 {
             islandPage = 0
             state = NotchActivityState.make(
-                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0,
+                featuredRequestId: reviewRequestId)
             state.scale = prefs.islandSize.scale
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
         if !prefs.showReviewBadge { state.reviews = 0 }
+        trackVisibility(state)
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -374,9 +397,19 @@ final class AppModel {
         guard let s = store.sessions[sessionId] else { return }
         activityTrace("intent \(action) answerable=\(s.isAnswerable(requestId: requestId))")
         switch action {
-        case .allow where s.isAnswerable(requestId: requestId): answer(sessionId, .allow)
+        case .allow where s.isAnswerable(requestId: requestId):
+            // A request that has only just appeared may not be the one the user aimed at (pages move under the cursor).
+            guard IslandGuard.allowAccepted(visibleSince: visibleSince[requestId]) else {
+                activityTrace("allow ignored: request visible < \(IslandGuard.tapDelay)s")
+                return
+            }
+            answer(sessionId, .allow)
+        case .review where s.isAnswerable(requestId: requestId):
+            reviewRequestId = requestId
+            islandPage = 0
+            reconcile()
         case .deny where s.isAnswerable(requestId: requestId): answer(sessionId, .deny)
-        case .allow, .deny: break
+        case .allow, .deny, .review: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
         case .nextPage, .previousPage, .refreshQuota, .openSettings: break
@@ -524,6 +557,12 @@ final class AppModel {
             e("PreToolUse", "payments-api") {
                 $0.toolName = "Bash"; $0.toolInput = .object(["command": .string("swift test --filter Retry")])
             })
+        // payments-api also asks: a long, risky command, so its row offers Review instead of Allow / Deny
+        _ = store.apply(
+            e("PermissionRequest", "payments-api", reply: true) {
+                $0.toolName = "Bash"
+                $0.toolInput = .object(["command": .string("git push --force-with-lease origin claude/retry-backoff")])
+            })
         // web-dashboard: a subagent is asking permission
         _ = store.apply(e("UserPromptSubmit", "web-dashboard") { $0.prompt = "Fix the flaky chart tooltip" })
         _ = store.apply(
@@ -532,8 +571,10 @@ final class AppModel {
             })
         _ = store.apply(
             e("PermissionRequest", "web-dashboard", reply: true) {
-                $0.agentId = "w1"; $0.agentType = "general-purpose"; $0.toolName = "Bash";
-                $0.toolInput = .object(["command": .string("npm install --save-dev vitest")])
+                $0.agentId = "w1"; $0.agentType = "Explore"; $0.toolName = "Bash"
+                $0.toolInput = .object([
+                    "command": .string("rm -rf node_modules .next && npm install --save-dev vitest @vitest/coverage-v8 --legacy-peer-deps")
+                ])
             })
         // api-gateway: Claude is asking the user a question
         _ = store.apply(e("UserPromptSubmit", "api-gateway") { $0.prompt = "Add an audit log for admin actions" })
