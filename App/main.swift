@@ -39,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         icon?.accessibilityDescription = "NotchBot"
         item.button?.image = icon
         let menu = NSMenu()
-        menu.addItem(withTitle: "Show Island", action: #selector(showIsland), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit NotchBot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -48,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
 
         // Starting the activity needs the app frontmost; activating as a regular app is enough, no window. Once the
-        // island is up (or has had its chance), tuck away; "Show Island" in the menu retries.
+        // island is up (or has had its chance), tuck away.
         Task { @MainActor in
             await model.island.resetExisting()
             for _ in 0..<30 {
@@ -74,7 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = sem.wait(timeout: .now() + 1)
     }
 
-    @objc func showIsland() { model.showIsland() }
     @objc func openSettings() { settingsWindow.show(model: model) }
 }
 

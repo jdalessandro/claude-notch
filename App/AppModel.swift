@@ -296,18 +296,6 @@ final class AppModel {
 
     // MARK: Live Activity
 
-    /// (Re)starts the island. Starting needs the foreground, so bring the app forward first.
-    func showIsland() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
-        Task { @MainActor in
-            await island.resetExisting()  // always a fresh activity: the old one may be "active" but not on screen
-            try? await Task.sleep(for: .milliseconds(400))
-            reconcile()
-            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) }
-        }
-    }
-
     private var seenAttention: Set<String> = []
     /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
     /// needs the user.
