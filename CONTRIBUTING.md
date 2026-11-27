@@ -28,6 +28,23 @@ make lint                # swift-format, strict
 Requirements: macOS 27.3+ (Live Activities on the Mac), Swift 6 toolchain; Xcode 27.3+ for the app. Heads-up: with only the Command Line Tools installed, the compiler
 occasionally fails with `plugin for module 'TestingMacros' not found`. That is a toolchain flake; re-run the command.
 
+## Branches and pull requests
+
+Name branches `<type>/<short-kebab-description>`, where the type is one of:
+
+| Type | For |
+|---|---|
+| `feat/` | A new or changed user-facing behaviour |
+| `fix/` | A bug fix |
+| `chore/` | Tooling, CI, dependencies, release plumbing |
+| `docs/` | Documentation and screenshots only |
+| `refactor/` | Internal change with no behaviour change |
+| `release/` | Cut by `make ship` (`release/vX.Y.Z`) |
+
+For example `feat/answer-questions-from-island`. Tool-generated names such as `claude/<slug>-<hash>` are renamed before the
+PR is opened. PRs are squash-merged (the PR title becomes the commit subject, with `(#N)` appended) and the branch is
+deleted on merge.
+
 ## Layout
 
 | Path | Contents |
