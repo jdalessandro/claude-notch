@@ -304,6 +304,8 @@ extension Badge where Label == Text {
 struct Stat<Glyph: View, Value: View>: View {
     var label: String
     var tint: Color? = nil
+    /// False in a tight row: the pill keeps its glyph and value and drops the dim label.
+    var showLabel = true
     @ViewBuilder var glyph: Glyph
     @ViewBuilder var value: Value
     @Environment(\.islandScale) private var k
@@ -311,7 +313,7 @@ struct Stat<Glyph: View, Value: View>: View {
         HStack(spacing: 4 * k) {
             glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
-            Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
+            if showLabel { Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45)) }
         }
         .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
@@ -321,14 +323,14 @@ struct Stat<Glyph: View, Value: View>: View {
 }
 
 extension Stat where Value == Text {
-    init(value: String, label: String, tint: Color? = nil, @ViewBuilder glyph: () -> Glyph) {
-        self.init(label: label, tint: tint, glyph: glyph) { Text(value) }
+    init(value: String, label: String, tint: Color? = nil, showLabel: Bool = true, @ViewBuilder glyph: () -> Glyph) {
+        self.init(label: label, tint: tint, showLabel: showLabel, glyph: glyph) { Text(value) }
     }
 }
 
 extension Stat where Glyph == EmptyView {
-    init(label: String, tint: Color? = nil, @ViewBuilder value: () -> Value) {
-        self.init(label: label, tint: tint, glyph: { EmptyView() }, value: value)
+    init(label: String, tint: Color? = nil, showLabel: Bool = true, @ViewBuilder value: () -> Value) {
+        self.init(label: label, tint: tint, showLabel: showLabel, glyph: { EmptyView() }, value: value)
     }
 }
 
@@ -372,8 +374,10 @@ struct PromptPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.amber.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
+        .overlay(
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                .strokeBorder(Island.amber.opacity(0.45), lineWidth: 1))
     }
 
     private var question: some View {
@@ -407,22 +411,27 @@ struct PromptPanel: View {
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
-                Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
-                    Pill(title: "Open", tint: Island.coral, filled: true, height: 30)
-                }
                 Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").sfont(size: 12)
-                    .foregroundStyle(Island.secondary).frame(maxWidth: .infinity)
+                    .foregroundStyle(Island.secondary).lineLimit(1)
+                Spacer(minLength: 8)
+                Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
+                    Pill(title: "Open", tint: Island.coral, filled: true, height: 26, stretch: false)
+                }
             } else if p.isQuestion {
-                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Not now", height: 30) }
+                Spacer(minLength: 8)
+                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                    Pill(title: "Not now", height: 26, stretch: false)
+                }
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 30)
+                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 26, stretch: false)
                 }
             } else {
+                Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Deny", tint: Island.red, height: 30)
+                    Pill(title: "Deny", tint: Island.red, height: 26, stretch: false)
                 }
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Allow", tint: Island.green, filled: true, height: 30)
+                    Pill(title: "Allow", tint: Island.green, filled: true, height: 26, stretch: false)
                 }
             }
         }
@@ -446,11 +455,11 @@ struct SessionRow: View {
                         Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    HStack(spacing: 6) {
-                        if let b = row.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
-                        Spacer(minLength: 6)
-                        stats
-                        status
+                    // As much of the stats as fits beside the branch: full, then without labels, then without the lines.
+                    ViewThatFits(in: .horizontal) {
+                        badgeLine(labels: true, lines: true)
+                        badgeLine(labels: false, lines: true)
+                        badgeLine(labels: false, lines: false)
                     }
                 }
                 .contentShape(Rectangle())
@@ -472,7 +481,7 @@ struct SessionRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface)
+                .fill(Island.surface)
         )
         .overlay {
             if row.kind == .review {
@@ -520,8 +529,17 @@ struct SessionRow: View {
         .fixedSize()
     }
 
+    private func badgeLine(labels: Bool, lines: Bool) -> some View {
+        HStack(spacing: 6) {
+            if let b = row.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
+            Spacer(minLength: 6)
+            stats(labels: labels, lines: lines)
+            status
+        }
+    }
+
     /// A working or idle session's stats as badges, beside its status.
-    @ViewBuilder private var stats: some View {
+    @ViewBuilder private func stats(labels: Bool, lines: Bool) -> some View {
         HStack(spacing: 5) {
             if row.kind == .working || row.kind == .idle {
                 if row.subagentTotal > 0 {
@@ -529,13 +547,13 @@ struct SessionRow: View {
                     Stat(
                         value: "\(running ? row.subagents : row.subagentTotal)",
                         label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
-                        tint: running ? Island.coral : nil
+                        tint: running ? Island.coral : nil, showLabel: labels
                     ) {
                         Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
                     }
                 }
-                if row.linesAdded + row.linesRemoved > 0 {
-                    Stat(label: "lines") {
+                if lines, row.linesAdded + row.linesRemoved > 0 {
+                    Stat(label: "lines", showLabel: labels) {
                         Text("+\(row.linesAdded)").foregroundStyle(Island.green)
                             + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
                     }
@@ -543,7 +561,7 @@ struct SessionRow: View {
                 // Neutral until the window is filling up (amber > 65 %, red > 85 %).
                 if let ctx = row.context {
                     let full = ctx > 0.65
-                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil) {
+                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil, showLabel: labels) {
                         Ring(fraction: ctx, tint: full ? Island.context(ctx) : Color.white.opacity(0.8))
                     }
                 }
