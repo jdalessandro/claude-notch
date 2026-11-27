@@ -35,6 +35,12 @@ extension View {
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
     static let inset: CGFloat = 17
+    /// Least height of the idle island's body, so the system keeps its rounded-rectangle shape instead of a pill.
+    static let idleMinHeight: CGFloat = 64
+    /// The logo in the compact island, and the waveform beside it, sized from it: the tallest bar is this fraction of
+    /// the logo's height, so the two always read as a pair.
+    static let compactIcon: CGFloat = 16
+    static let compactWaveRatio: CGFloat = 0.7
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -186,6 +192,7 @@ struct AgentWave: View {
     var pulse = 0
     var height: CGFloat = 18
     static let maxBars = 7
+    static let minBars = 5
 
     /// Bar `i`'s height (0.3...1) at beat `pulse`: deterministic, different per bar, never two beats alike.
     static func level(_ i: Int, _ pulse: Int) -> CGFloat {
@@ -198,16 +205,19 @@ struct AgentWave: View {
         let main = min(agents, Self.maxBars)
         let subs = min(subagents, Self.maxBars - main)
         if main + subs == 0 {
-            HStack(spacing: height * 0.16) {
+            HStack(spacing: height * 0.2) {
                 ForEach(0..<5, id: \.self) { _ in
-                    Circle().fill(Color.white.opacity(0.4)).frame(width: height * 0.15, height: height * 0.15)
+                    Circle().fill(Color.white.opacity(0.7)).frame(width: height * 0.2, height: height * 0.2)
                 }
             }
             .frame(height: height)
         } else {
+            // At least `minBars` bars so one agent still reads as a waveform; agents beyond that add bars (up to
+            // `maxBars`), and subagents are the thinner ones at the end.
+            let total = max(main + subs, Self.minBars)
             HStack(alignment: .center, spacing: height * 0.14) {
-                ForEach(0..<(main + subs), id: \.self) { i in
-                    let isSub = i >= main
+                ForEach(0..<total, id: \.self) { i in
+                    let isSub = i >= main && i < main + subs
                     // Fixed-size bar scaled vertically: the layout never changes between beats, so the system's
                     // snapshot can't catch the bars collapsed or missing mid-animation.
                     Capsule().fill(tint)
@@ -217,7 +227,6 @@ struct AgentWave: View {
             }
             .frame(height: height)
             .animation(.easeInOut(duration: 0.9), value: pulse)
-            .contentTransition(.identity)
         }
     }
 }
@@ -796,10 +805,14 @@ struct IslandIdle: View {
 /// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: 16) }
+    var body: some View { Artwork(size: Island.compactIcon) }
 }
 
 struct IslandCompactTrailing: View {
     let state: NotchActivityState
-    var body: some View { AgentWave(state: state, height: 15) }
+    var body: some View {
+        // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
+        let h = Island.compactIcon * Island.compactWaveRatio
+        AgentWave(state: state, height: h).frame(width: 30, height: h)
+    }
 }

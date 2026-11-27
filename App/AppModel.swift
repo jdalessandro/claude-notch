@@ -45,7 +45,6 @@ final class AppModel {
     var eventLog: [String] = []
     /// The Live Activity that is the island.
     let island = ActivityHost()
-    var onShowWindow: (() -> Void)?
 
     // MARK: plan, quota & usage
     var billing = PlanDetector.detectForCurrentUser()
@@ -126,7 +125,7 @@ final class AppModel {
         } catch {
             lastError =
                 (error as? POSIXError)?.code == .EADDRINUSE
-                ? "Notchbot is already running." : "Socket: \(error.localizedDescription)"
+                ? "NotchBot is already running." : "Socket: \(error.localizedDescription)"
         }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -228,7 +227,7 @@ final class AppModel {
     }
 
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
-        let reason = decision == .deny ? "Denied from Notchbot" : nil
+        let reason = decision == .deny ? "Denied from NotchBot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
             store.resolvePermission(sessionId, allowed: decision == .allow)
         } else {
@@ -305,7 +304,7 @@ final class AppModel {
             await island.resetExisting()  // always a fresh activity: the old one may be "active" but not on screen
             try? await Task.sleep(for: .milliseconds(400))
             reconcile()
-            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) } else { onShowWindow?() }
+            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) }
         }
     }
 
