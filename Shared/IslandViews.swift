@@ -500,8 +500,8 @@ struct PromptPanel: View {
         .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
-    /// The only place an approval is answered. Positive is green, negative is red, as users expect: red-tinted Deny on the left, Allow on
-    /// the right (filled green). A destructive request keeps those colours (the red "Destructive" pill carries the
+    /// The only place an approval is answered. Positive is green, negative is red, as users expect: red-tinted Deny on the left, green-tinted Allow on
+    /// the right, on the same wash. A destructive request keeps those colours (the red "Destructive" pill carries the
     /// danger) but makes Allow a two-step: "Allow", then "Confirm" for a few seconds. "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
@@ -544,8 +544,8 @@ struct PromptPanel: View {
                 }
                 .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    // Same solid green in every state; only the word changes when a destructive Allow is armed.
-                    Pill(title: p.confirming ? "Confirm" : "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
+                    // Same wash as Deny in every state (red and green on the same 18 % background); only the word changes when a destructive Allow is armed.
+                    Pill(title: p.confirming ? "Confirm" : "Allow", tint: Island.allow, wash: true, height: 26, stretch: false)
                 }
                 .accessibilityLabel(
                     p.confirming
