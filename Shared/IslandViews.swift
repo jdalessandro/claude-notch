@@ -52,7 +52,8 @@ enum Island {
     static let red = Color(red: 1.0, green: 0.27, blue: 0.23)
     static let blue = Color(red: 0.25, green: 0.56, blue: 1.0)
     static let secondary = Color.white.opacity(0.55)
-    static let tertiary = Color.white.opacity(0.35)
+    /// 5.3:1 on the black island and on `surface` (WCAG 1.4.3 needs 4.5:1 for 11pt text).
+    static let tertiary = Color.white.opacity(0.5)
     static let surface = Color.white.opacity(0.08)
     /// Cards inside the island. Near-concentric with the island's ~22pt corner across its ~16pt margin (strictly
     /// concentric would be ~6pt, which reads boxy at card size); nested boxes step down again (`innerRadius`).
@@ -61,6 +62,25 @@ enum Island {
 
     static func quota(_ f: Double) -> Color { f >= 0.9 ? red : f >= 0.75 ? amber : blue }
     static func context(_ f: Double) -> Color { f > 0.85 ? red : f > 0.65 ? amber : coral }
+    /// The danger levels, where the hue shift to red also gets a "!" so colour is not the only cue (WCAG 1.4.1).
+    static func quotaDanger(_ f: Double) -> Bool { f >= 0.9 }
+    static func contextDanger(_ f: Double) -> Bool { f > 0.85 }
+
+    /// A duration as VoiceOver should say it: "1 minute 14 seconds", "2 hours 4 minutes".
+    static func spoken(_ seconds: TimeInterval, maxUnits: Int = 2) -> String {
+        let f = DateComponentsFormatter()
+        f.unitsStyle = .full
+        f.allowedUnits = [.day, .hour, .minute, .second]
+        f.maximumUnitCount = maxUnits
+        f.zeroFormattingBehavior = .dropAll
+        return f.string(from: max(1, seconds)) ?? ""
+    }
+    /// "82% used, resets in 2 hours 4 minutes".
+    static func quotaValue(_ f: Double, _ reset: Date?, now: Date = .now) -> String {
+        let used = "\(Int((f * 100).rounded()))% used"
+        guard let reset, reset > now else { return used }
+        return used + ", resets in " + spoken(reset.timeIntervalSince(now))
+    }
 }
 
 extension NotchActivityState.Phase {
@@ -182,6 +202,9 @@ struct Artwork: View {
                         .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("NotchBot")
+            .accessibilityValue(badge > 0 ? "\(badge) ready to review" : "")
     }
 }
 
@@ -199,6 +222,8 @@ struct AgentWave: View {
     let tint: Color
     var pulse = 0
     var height: CGFloat = 18
+    /// What VoiceOver says; derived from the counts when nil.
+    var label: String? = nil
     static let maxBars = 7
     static let minBars = 5
 
@@ -210,6 +235,10 @@ struct AgentWave: View {
     }
 
     var body: some View {
+        bars.accessibilityElement(children: .ignore).accessibilityLabel(spokenLabel)
+    }
+
+    @ViewBuilder private var bars: some View {
         let main = min(agents, Self.maxBars)
         let subs = min(subagents, Self.maxBars - main)
         if main + subs == 0 {
@@ -237,6 +266,14 @@ struct AgentWave: View {
             .animation(.easeInOut(duration: 0.9), value: pulse)
         }
     }
+
+    private var spokenLabel: String {
+        if let label { return label }
+        if agents + subagents == 0 { return "No agents working" }
+        var s = "\(agents) agent\(agents == 1 ? "" : "s") working"
+        if subagents > 0 { s += ", \(subagents) subagent\(subagents == 1 ? "" : "s")" }
+        return s
+    }
 }
 
 extension AgentWave {
@@ -244,14 +281,17 @@ extension AgentWave {
     /// per waiting session keeps the island visibly asking.
     init(state: NotchActivityState, height: CGFloat = 18) {
         let agents = state.working > 0 ? state.working : (state.phase == .needsYou ? state.needsYou : 0)
+        let waiting = state.working == 0 && state.phase == .needsYou
         self.init(
-            agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, pulse: state.pulse, height: height)
+            agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, pulse: state.pulse, height: height,
+            label: waiting ? "\(agents) waiting for you" : nil)
     }
 }
 
 // MARK: - Buttons
 
-/// A pill button label. `filled` uses the tint as the fill with white text; otherwise a quiet translucent fill.
+/// A pill button label. `filled` uses the tint as the fill with black text (white fails contrast on coral and green);
+/// otherwise a quiet translucent fill. The tap target is at least 24pt tall whatever the scale (WCAG 2.5.8).
 struct Pill: View {
     let title: String
     var tint: Color = .white
@@ -262,11 +302,12 @@ struct Pill: View {
     var body: some View {
         let h = height * k
         Text(title).font(.system(size: h * 0.42, weight: .semibold)).lineLimit(1)
-            .foregroundStyle(filled ? Color.white : tint == .white ? Color.white : tint)
+            .foregroundStyle(filled ? Color.black : tint == .white ? Color.white : tint)
             .padding(.horizontal, h * 0.45)
             .frame(maxWidth: stretch ? .infinity : nil, minHeight: h, maxHeight: h)
             .background(Capsule().fill(filled ? tint : Color.white.opacity(0.14)))
-            .contentShape(Capsule())
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
     }
 }
 
@@ -306,14 +347,21 @@ struct Stat<Glyph: View, Value: View>: View {
     var tint: Color? = nil
     /// False in a tight row: the pill keeps its glyph and value and drops the dim label.
     var showLabel = true
+    /// What VoiceOver says; the visible value and label when nil.
+    var spoken: String? = nil
     @ViewBuilder var glyph: Glyph
     @ViewBuilder var value: Value
     @Environment(\.islandScale) private var k
     var body: some View {
+        content.accessibilityElement(children: spoken == nil ? .combine : .ignore)
+            .accessibilityLabel(spoken ?? "")
+    }
+
+    private var content: some View {
         HStack(spacing: 4 * k) {
             glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
-            if showLabel { Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45)) }
+            if showLabel { Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.55)) }
         }
         .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
@@ -323,14 +371,19 @@ struct Stat<Glyph: View, Value: View>: View {
 }
 
 extension Stat where Value == Text {
-    init(value: String, label: String, tint: Color? = nil, showLabel: Bool = true, @ViewBuilder glyph: () -> Glyph) {
-        self.init(label: label, tint: tint, showLabel: showLabel, glyph: glyph) { Text(value) }
+    init(
+        value: String, label: String, tint: Color? = nil, showLabel: Bool = true, spoken: String? = nil,
+        @ViewBuilder glyph: () -> Glyph
+    ) {
+        self.init(label: label, tint: tint, showLabel: showLabel, spoken: spoken, glyph: glyph) { Text(value) }
     }
 }
 
 extension Stat where Glyph == EmptyView {
-    init(label: String, tint: Color? = nil, showLabel: Bool = true, @ViewBuilder value: () -> Value) {
-        self.init(label: label, tint: tint, showLabel: showLabel, glyph: { EmptyView() }, value: value)
+    init(
+        label: String, tint: Color? = nil, showLabel: Bool = true, spoken: String? = nil, @ViewBuilder value: () -> Value
+    ) {
+        self.init(label: label, tint: tint, showLabel: showLabel, spoken: spoken, glyph: { EmptyView() }, value: value)
     }
 }
 
@@ -346,7 +399,16 @@ struct Ring: View {
             Circle().trim(from: 0, to: max(0.04, min(1, fraction))).stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
+        .overlay {
+            // Not colour alone: a "!" in the ring at the danger level.
+            if Island.contextDanger(fraction) {
+                Image(systemName: "exclamationmark").font(.system(size: 6 * k, weight: .black)).foregroundStyle(tint)
+            }
+        }
         .frame(width: size * k, height: size * k)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Context")
+        .accessibilityValue("\(Int((fraction * 100).rounded()))% used")
     }
 }
 
@@ -417,22 +479,27 @@ struct PromptPanel: View {
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
                     Pill(title: "Open", tint: Island.coral, filled: true, height: 26, stretch: false)
                 }
+                .accessibilityLabel("Open \(p.session)")
             } else if p.isQuestion {
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Not now", height: 26, stretch: false)
                 }
+                .accessibilityLabel("Not now: \(p.session)")
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 26, stretch: false)
                 }
+                .accessibilityLabel("Answer in Claude: \(p.session)")
             } else {
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Deny", tint: Island.red, height: 26, stretch: false)
                 }
+                .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                     Pill(title: "Allow", tint: Island.green, filled: true, height: 26, stretch: false)
                 }
+                .accessibilityLabel("Allow \(Island.target(p.tool, p.text))")
             }
         }
         .buttonStyle(.plain)
@@ -465,6 +532,11 @@ struct SessionRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // One element for the whole header, read in order: name, status, branch, stats, detail. It opens the same
+            // session as the detail line below, which is hidden from VoiceOver so nothing is read twice.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.spokenSummary)
+            .accessibilityHint("Opens the session")
             HStack(spacing: 5) {
                 Button(intent: OpenSessionIntent(sessionId: row.id)) {
                     Text(row.detail)
@@ -474,6 +546,7 @@ struct SessionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityHidden(true)
                 trailing
             }
         }
@@ -510,9 +583,11 @@ struct SessionRow: View {
                     Button(intent: DenyIntent(sessionId: row.id, requestId: r)) {
                         Pill(title: "Deny", tint: Island.red, height: 24, stretch: false)
                     }
+                    .accessibilityLabel("Deny \(Island.target(row.tool ?? "request", row.detail))")
                     Button(intent: AllowIntent(sessionId: row.id, requestId: r)) {
                         Pill(title: "Allow", tint: Island.green, filled: true, height: 24, stretch: false)
                     }
+                    .accessibilityLabel("Allow \(Island.target(row.tool ?? "request", row.detail))")
                 } else {
                     openButton
                 }
@@ -520,6 +595,7 @@ struct SessionRow: View {
                 Button(intent: OpenSessionIntent(sessionId: row.id, requestId: row.requestId ?? "")) {
                     Pill(title: "Answer", tint: Island.coral, filled: true, height: 24, stretch: false)
                 }
+                .accessibilityLabel("Answer \(row.name)")
             case .input, .failed: openButton
             case .review, .working, .idle:
                 EmptyView()
@@ -553,7 +629,7 @@ struct SessionRow: View {
                     }
                 }
                 if lines, row.linesAdded + row.linesRemoved > 0 {
-                    Stat(label: "lines", showLabel: labels) {
+                    Stat(label: "lines", showLabel: labels, spoken: "\(row.linesAdded) lines added, \(row.linesRemoved) removed") {
                         Text("+\(row.linesAdded)").foregroundStyle(Island.green)
                             + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
                     }
@@ -575,6 +651,43 @@ struct SessionRow: View {
         Button(intent: OpenSessionIntent(sessionId: row.id)) {
             Pill(title: "Open", tint: Island.coral, filled: true, height: 24, stretch: false)
         }
+        .accessibilityLabel("Open \(row.name)")
+    }
+}
+
+extension Island {
+    /// "Bash: npm install…" for an Allow / Deny label: the tool and the start of what it wants to do.
+    static func target(_ tool: String?, _ text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clipped = t.count > 60 ? String(t.prefix(60)) + "…" : t
+        guard let tool, !tool.isEmpty else { return clipped }
+        return clipped.isEmpty ? tool : "\(tool): \(clipped)"
+    }
+}
+
+extension NotchActivityState.Row {
+    /// What VoiceOver reads for the header: name, status, branch, stats, then the detail line.
+    var spokenSummary: String {
+        var parts: [String] = []
+        if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(name) }
+        if kind == .working, let since {
+            parts.append("Working for " + Island.spoken(Date.now.timeIntervalSince(since)))
+        } else {
+            parts.append(status)
+        }
+        if let branch { parts.append("branch \(branch)") }
+        if kind == .working || kind == .idle {
+            if subagentTotal > 0 {
+                parts.append(
+                    subagents > 0
+                        ? "\(subagents) subagent\(subagents == 1 ? "" : "s") running"
+                        : "\(subagentTotal) subagent\(subagentTotal == 1 ? "" : "s") done")
+            }
+            if linesAdded + linesRemoved > 0 { parts.append("\(linesAdded) lines added, \(linesRemoved) removed") }
+            if let context { parts.append("Context \(Int(context * 100))% used") }
+        }
+        if !detail.isEmpty { parts.append(detail) }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -614,10 +727,12 @@ struct Footer: View {
         Button(intent: RefreshQuotaIntent()) {
             Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
                 .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
-                .contentShape(Circle())
+                .frame(minWidth: 24, minHeight: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .accessibilityLabel("Refresh plan limits")
     }
 
     @ViewBuilder private var pager: some View {
@@ -644,6 +759,9 @@ struct Footer: View {
                     Capsule().fill(Island.quota(f)).frame(width: max(7 * k, bar * k * min(1, f)), height: 7 * k)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
+            if Island.quotaDanger(f) {
+                Image(systemName: "exclamationmark").sfont(size: size - 1, weight: .black).foregroundStyle(Island.red)
+            }
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
                 HStack(spacing: 2) {
                     if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
@@ -655,6 +773,9 @@ struct Footer: View {
         .monospacedDigit()
         .sfont(size: size, weight: .semibold)
         .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label == "5h" ? "5-hour limit" : "Weekly limit")
+        .accessibilityValue(Island.quotaValue(f, reset))
     }
 }
 
@@ -691,6 +812,7 @@ struct Pager: View {
     var body: some View {
         HStack(spacing: 5) {
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
+                .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
                 ForEach(0..<min(state.pages, 8), id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
@@ -698,7 +820,10 @@ struct Pager: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: state.page)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Page \(state.page + 1) of \(state.pages)")
             Button(intent: PageIntent(forward: true)) { arrow("chevron.right") }
+                .accessibilityLabel("Next page")
         }
         .buttonStyle(.plain)
         .fixedSize()
@@ -706,7 +831,8 @@ struct Pager: View {
 
     private func arrow(_ symbol: String) -> some View {
         Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
+            .frame(minWidth: 24, minHeight: 24).contentShape(Rectangle())
     }
 }
 
@@ -768,6 +894,7 @@ struct SettingsGear: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("NotchBot settings")
     }
 }
 
@@ -842,6 +969,9 @@ struct IslandIdle: View {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
+                if Island.quotaDanger(f) {
+                    Image(systemName: "exclamationmark").sfont(size: 13, weight: .black).foregroundStyle(Island.red)
+                }
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
                     .monospacedDigit().lineLimit(1).fixedSize()
             }
@@ -861,6 +991,9 @@ struct IslandIdle: View {
             .sfont(size: 11).foregroundStyle(Island.tertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(Island.quotaValue(f, reset))
     }
 }
 
