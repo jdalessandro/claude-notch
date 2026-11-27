@@ -155,52 +155,6 @@ import Testing
         }
     }
 
-    @Test func offPageNeedCountsRequestsOnOtherPages() {
-        // a and d wait on approval, b and c work. One row per page under the featured prompt.
-        let s = store { st in
-            approval("a")(&st)
-            _ = st.apply(ev("UserPromptSubmit", sid: "b") { $0.prompt = "go" })
-            _ = st.apply(ev("UserPromptSubmit", sid: "c") { $0.prompt = "go" })
-            approval("d")(&st)
-        }
-        let pages = (0..<3).map { NotchActivityState.make(sessions: s.active, quota: nil, page: $0) }
-        #expect(pages.allSatisfy { $0.pages == 3 && $0.rows.count == 1 })
-        // Page 0 shows the other approval (urgent rows sort first), so nothing needing you is hidden; on the others it is.
-        #expect(pages.map(\.offPageNeed) == [0, 1, 1])
-    }
-
-    @Test func offPageNeedIsZeroOnASinglePage() {
-        let s = store {
-            approval("a")(&$0); _ = $0.apply(ev("UserPromptSubmit", sid: "b") { $0.prompt = "go" })
-        }
-        #expect(NotchActivityState.make(sessions: s.active, quota: nil).offPageNeed == 0)
-    }
-
-    @Test func offPageNeedIgnoresFinishedReviews() {
-        let s = store { st in
-            approval("a")(&st)
-            for i in 0..<3 {
-                _ = st.apply(ev("UserPromptSubmit", sid: "w\(i)") { $0.prompt = "go" })
-            }
-        }
-        let st = NotchActivityState.make(sessions: s.active, quota: nil)
-        #expect(st.pages > 1 && st.offPageNeed == 0)
-    }
-
-    @Test func approvalOnAnotherPageIsCounted() {
-        let s = store { st in
-            approval("a")(&st)
-            _ = st.apply(ev("UserPromptSubmit", sid: "w") { $0.prompt = "go" })
-            approval("b")(&st)
-        }
-        // a is answerable and featured; w and b are rows, one per page. Whichever page is shown, the other row's need
-        // is counted only when it needs you.
-        let p0 = NotchActivityState.make(sessions: s.active, quota: nil, page: 0)
-        let p1 = NotchActivityState.make(sessions: s.active, quota: nil, page: 1)
-        let needRows = [p0, p1].map { $0.rows.filter { $0.kind == .approval }.count }
-        #expect(p0.offPageNeed + needRows[0] == 1 && p1.offPageNeed + needRows[1] == 1)
-    }
-
     @Test func limitsNoteAndHooksFlagPassThroughAndStayOutOfTheWayByDefault() throws {
         let plain = NotchActivityState.make(sessions: [], quota: nil)
         #expect(plain.limitsNote == nil && !plain.hooksMissing && plain.limitsUnknown)

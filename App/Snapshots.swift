@@ -32,15 +32,13 @@ enum IslandSnapshots {
         var large = NotchActivityState.make(
             sessions: sessions.filter { $0.pending == nil }, quota: quota, maxRows: larger.maxRows)
         large.scale = larger.scale
-        var offPage = question
-        offPage.offPageNeed = 2
         var noLimits = NotchActivityState.make(sessions: sessions.filter { $0.pending == nil }, quota: nil)
         noLimits.page = 0
         var failed = noLimits
         failed.limitsNote = .failed
         let hooksOff = NotchActivityState.make(sessions: [], quota: nil, hooksInstalled: false)
         for (name, st) in [
-            ("expanded-off-page-need", offPage), ("expanded-limits-unavailable", noLimits),
+            ("expanded-limits-unavailable", noLimits),
             ("expanded-limits-failed", failed), ("expanded-hooks-missing", hooksOff),
         ] {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))

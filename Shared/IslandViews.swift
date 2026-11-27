@@ -873,23 +873,18 @@ struct Footer: View {
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false)
-            // Tightest: the dots always win. Reset times go first, then the "+N need you" hint.
+            // Tightest: the dots always win, so the reset times go.
             row(bar: 16, size: 10, icon: false, resets: false)
-            row(bar: 16, size: 10, icon: false, resets: false, hint: false)
         }
         .padding(.horizontal, 4)
     }
 
-    private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, hint: Bool = true
-    )
-        -> some View
-    {
+    private func row(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true) -> some View {
         HStack(spacing: 8) {
             limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh
             Spacer(minLength: 0)
-            pager(hint: hint)
+            pager
         }
     }
 
@@ -911,8 +906,8 @@ struct Footer: View {
         .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private func pager(hint: Bool) -> some View {
-        if state.pages > 1 { Pager(state: state, hint: hint).fixedSize() }
+    @ViewBuilder private var pager: some View {
+        if state.pages > 1 { Pager(state: state).fixedSize() }
     }
 
     @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
@@ -1010,17 +1005,11 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
-    /// False in the tightest footer, where the dots take the room the "+N need you" hint would use.
-    var hint = true
     /// At most this many dots are drawn; past it they are a window that follows the current page.
     private static let maxDots = 8
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
-            if hint, state.offPageNeed > 0 {
-                Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.waiting)
-                    .lineLimit(1).fixedSize().padding(.trailing, 3)
-            }
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
                 .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
