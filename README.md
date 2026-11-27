@@ -23,8 +23,6 @@ without switching windows, and keep an eye on your plan limits. All of it lives 
 - **The most urgent request up front.** A permission request shows the exact command with **Allow / Deny**; a question
   shows its choices with **Answer in Claude** / **Not now**. Up to three more sessions follow, each with its own state,
   timer, subagent count and context, and a second permission request can be answered inline from its row.
-- **The full picture in a window.** *Sessions…* (menu bar) lists every session grouped into **Needs you**,
-  **Ready to review**, **Working** and **Idle**, with the usage card.
 - **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
   the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
   finishes, **Claude's result** for you to review.
@@ -70,7 +68,7 @@ open it and drag **Notchbot** to Applications.
 The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
 the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
 
-Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
+Then click **Install hooks** (in the island footer, or *Settings ▸ Integration*), and restart any Claude sessions that were
 already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
 at `settings.json.notchbot.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
 If you installed with Homebrew, run that in-app uninstall *before* `brew uninstall --cask notchbot`: brew removes the
@@ -138,7 +136,7 @@ click **Allow** or **Deny**. Things to know:
 
 ## Settings
 
-Open from the menu-bar icon, the *Sessions* window's **⋯ ▸ Settings…**, or ⌘, while the app is active. Changes apply immediately.
+Open from the menu-bar icon, the island's **⋯ ▸ Settings…**, or ⌘, while the app is active. Changes apply immediately.
 
 | Tab | Options |
 |---|---|
@@ -176,7 +174,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). With only the Command Line Tools install
 ```
 Sources/NotchbotCore   pure logic: events, state machine, transcript + usage parsing, IPC, installer, preferences
 Sources/notchbot-hook the forwarder Claude Code invokes (never blocks a session)
-App/                      the host app: model, Live Activity host, Sessions window, settings, menu bar
+App/                      the host app: model, Live Activity host, settings, menu bar
 Shared/                   island views, App Intents and activity attributes (app + widget)
 Widget/                   the widget extension that draws the Live Activity
 Tests/                    Swift Testing suites

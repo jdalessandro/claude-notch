@@ -45,7 +45,6 @@ final class AppModel {
     var eventLog: [String] = []
     /// The Live Activity that is the island.
     let island = ActivityHost()
-    var onShowWindow: (() -> Void)?
 
     // MARK: plan, quota & usage
     var billing = PlanDetector.detectForCurrentUser()
@@ -276,7 +275,7 @@ final class AppModel {
             await island.resetExisting()  // always a fresh activity: the old one may be "active" but not on screen
             try? await Task.sleep(for: .milliseconds(400))
             reconcile()
-            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) } else { onShowWindow?() }
+            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) }
         }
     }
 
