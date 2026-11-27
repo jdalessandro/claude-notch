@@ -117,8 +117,6 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// Finished sessions waiting for the user to review; shown as a badge on the logo. The app zeroes it when the
     /// setting is off, since the widget process can't read the app's settings.
     public var reviews = 0
-    /// Sessions that need you (not just a finished turn to review) on pages other than the one shown.
-    public var offPageNeed = 0
     /// Why the limits are missing or not current; nil when they are simply shown. Absent from the payload when nil.
     public var limitsNote: LimitsNote?
     /// True when NotchBot's hooks are not installed, so "no sessions" cannot be told apart from "not watching".
@@ -253,9 +251,6 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
                 tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil,
                 destructive: s.pending?.destructive ?? false, truncated: (s.pending?.commandLength ?? 0) > CommandRisk.inlineLimit)
         }
-        // Sessions that need an answer (not just a review) and sit on another page than the one shown.
-        let shown = Set(rows.map(\.id))
-        let offPage = rest.filter { $0.status.needsAttention && !shown.contains($0.id) }.count
         // A focused session's subagent tree replaces the session rows. A session that is gone or has no subagents
         // falls back to the list (the app then drops the focus).
         let focused = focus.flatMap { id in active.first { $0.id == id && !$0.subagents.isEmpty } }.map {
@@ -273,7 +268,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: focused == nil ? Array(rows) : [],
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
-            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage, focus: focused)
+            pages: pages, reviews: active.filter(\.needsReview).count, focus: focused)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

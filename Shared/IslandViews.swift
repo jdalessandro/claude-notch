@@ -875,18 +875,15 @@ struct Footer: View {
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false)
-            // Tightest: the dots always win. Reset times go first, then the hint gets short, then 24pt targets, then the hint goes.
+            // Tightest: the dots always win. Reset times go first, then 24pt targets at any scale.
             row(bar: 16, size: 10, icon: false, resets: false)
-            row(bar: 16, size: 10, icon: false, resets: false, hint: false)
-            row(bar: 16, size: 10, icon: false, resets: false, compact: true)
-            row(bar: 12, size: 9.5, icon: false, resets: false, compact: true, hint: false)
+            row(bar: 12, size: 9.5, icon: false, resets: false, compact: true)
         }
         .padding(.horizontal, 4)
     }
 
     private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, compact: Bool = false,
-        hint: Bool = true
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, compact: Bool = false
     )
         -> some View
     {
@@ -894,7 +891,7 @@ struct Footer: View {
             limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh(compact: compact)
             Spacer(minLength: 0)
-            pager(compact: compact, hint: hint)
+            pager(compact: compact)
         }
     }
 
@@ -917,8 +914,8 @@ struct Footer: View {
         .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private func pager(compact: Bool, hint: Bool) -> some View {
-        if state.pages > 1 { Pager(state: state, hint: hint, compact: compact).fixedSize() }
+    @ViewBuilder private func pager(compact: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, compact: compact).fixedSize() }
     }
 
     @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
@@ -1016,21 +1013,13 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
-    /// False in the tightest footer, where the dots take the room the "+N need you" hint would use.
-    var hint = true
-    /// Tight: the hint is just "+2" and the arrows are 24pt buttons whatever the scale (the least that is still a target).
+    /// Tight: the arrows are 24pt buttons whatever the scale (the least that is still a target).
     var compact = false
     /// At most this many dots are drawn; past it they are a window that follows the current page.
     private static let maxDots = 8
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
-            if hint, state.offPageNeed > 0 {
-                Text(compact ? "+\(state.offPageNeed)" : "+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold)
-                    .foregroundStyle(Island.amber)
-                    .lineLimit(1).fixedSize().padding(.trailing, 3)
-                    .accessibilityLabel("\(state.offPageNeed) more need you on other pages")
-            }
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
                 .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
