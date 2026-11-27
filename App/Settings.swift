@@ -46,7 +46,7 @@ final class SettingsWindowController {
     func show(model: AppModel) {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model, settings: model.settings)))
-            w.title = "Notchbot Settings"
+            w.title = "NotchBot Settings"
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.setContentSize(NSSize(width: 540, height: 520))
             w.isReleasedWhenClosed = false
@@ -295,7 +295,7 @@ struct AdvancedTab: View {
 
             Section {
                 LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
-                Text("Notchbot is an unofficial companion for Claude Code. It is not affiliated with or endorsed by Anthropic.")
+                Text("NotchBot is an unofficial companion for Claude Code. It is not affiliated with or endorsed by Anthropic.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }

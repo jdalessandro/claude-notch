@@ -78,7 +78,7 @@ xcrun stapler staple "$APP"; rm "$OUT.zip"
 
 echo "==> dmg"
 STAGE=$(mktemp -d); cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-rm -f "$OUT.dmg"; hdiutil create -volname "Notchbot" -srcfolder "$STAGE" -ov -format UDZO "$OUT.dmg"; rm -rf "$STAGE"
+rm -f "$OUT.dmg"; hdiutil create -volname "NotchBot" -srcfolder "$STAGE" -ov -format UDZO "$OUT.dmg"; rm -rf "$STAGE"
 sign "$OUT.dmg"
 xcrun notarytool submit "$OUT.dmg" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$OUT.dmg"

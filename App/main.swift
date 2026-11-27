@@ -40,14 +40,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mark.scale = NSScreen.main?.backingScaleFactor ?? 2
         let icon = mark.nsImage
         icon?.isTemplate = true  // the menu bar tints it for light/dark
-        icon?.accessibilityDescription = "Notchbot"
+        icon?.accessibilityDescription = "NotchBot"
         item.button?.image = icon
         let menu = NSMenu()
         menu.addItem(withTitle: "Sessions…", action: #selector(showWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Show Island", action: #selector(showIsland), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Notchbot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit NotchBot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for i in menu.items where i.action != #selector(NSApplication.terminate(_:)) { i.target = self }
         item.menu = menu
         statusItem = item
@@ -91,7 +91,7 @@ final class DetailWindowController {
     func show(model: AppModel) {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: DetailView(model: model)))
-            w.title = "Notchbot"
+            w.title = "NotchBot"
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             w.setContentSize(NSSize(width: 460, height: 640))
             w.isReleasedWhenClosed = false

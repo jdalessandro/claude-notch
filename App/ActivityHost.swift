@@ -102,10 +102,10 @@ final class ActivityHost {
     @discardableResult
     func ensureStarted(with state: NotchActivityState) -> Bool {
         if activity != nil { return true }
-        guard enabled else { lastError = "Live Activities are turned off for Notchbot in System Settings."; return false }
+        guard enabled else { lastError = "Live Activities are turned off for NotchBot in System Settings."; return false }
         do {
             activity = try Activity.request(
-                attributes: NotchAttributes(title: "Notchbot"), content: content(state), pushType: nil,
+                attributes: NotchAttributes(title: "NotchBot"), content: content(state), pushType: nil,
                 style: .standard)
             last = state
             lastError = nil

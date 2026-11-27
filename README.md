@@ -1,7 +1,11 @@
-# Notchbot
+<p align="center">
+  <img src="docs/brand/notchbot-icon.png" alt="NotchBot logo: a coral 8-bit robot" width="128">
+</p>
+
+<h1 align="center">NotchBot</h1>
 
 **An unofficial notch companion for [Claude Code](https://claude.com/claude-code): a Dynamic-Island-style status display for MacBooks with a display cutout.**
-Notchbot is an independent, community project. It is not made by, affiliated with, or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
+NotchBot is an independent, community project. It is not made by, affiliated with, or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
 See every running agent at a glance, get told when something finishes or needs you, approve tool permissions
 without switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
@@ -63,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/jdalessandro/notchbot/main/scripts/
 ```
 
 **Manual:** download `Notchbot-<version>.dmg` from [Releases](https://github.com/jdalessandro/notchbot/releases),
-open it and drag **Notchbot** to Applications.
+open it and drag **NotchBot** to Applications.
 
 > Releases are being set up; until the first one is published, [build from source](#build-from-source).
 
@@ -156,7 +160,7 @@ Open from the menu-bar icon, the *Sessions* window's **⋯ ▸ Settings…**, or
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
 | Island missing | Menu bar ▸ **Show Island**. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
 | Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
-| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Notchbot leaves it alone. |
+| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, NotchBot leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
 | Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
 
@@ -211,7 +215,7 @@ Sparkle auto-update · launch at login.
 
 ## Trademarks and affiliation
 
-Notchbot is an independent, community project. It is **not affiliated with, endorsed by, or sponsored by Anthropic**.
+NotchBot is an independent, community project. It is **not affiliated with, endorsed by, or sponsored by Anthropic**.
 "Claude" and "Claude Code" are trademarks of Anthropic, PBC, and are used here only to say what this app works with.
 
 This repository does not include Anthropic's logos, the Claude mark, or other Anthropic brand assets, and contributions
