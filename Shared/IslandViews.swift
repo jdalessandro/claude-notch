@@ -494,11 +494,24 @@ struct PromptPanel: View {
     }
 
     private var question: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(p.text).sfont(size: 15, weight: .semibold).foregroundStyle(.white).lineLimit(2)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(p.text).sfont(size: 15, weight: .semibold).foregroundStyle(.white).lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            if !p.options.isEmpty {
-                // Read-only: the answer is given in Claude itself.
+            if p.canChoose {
+                // Claude's layout: numbered choices with their explanation, "Other" last. A tap answers Claude.
+                ForEach(Array(p.choices.enumerated()), id: \.offset) { i, c in
+                    Button(intent: PickAnswerIntent(sessionId: p.sessionId, requestId: p.requestId, option: i)) {
+                        choiceRow(number: "\(i + 1)", title: c.label, detail: c.detail, accent: true)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel(c.detail.isEmpty ? c.label : "\(c.label), \(c.detail)")
+                    .accessibilityHint("Answers Claude")
+                }
+                Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                    choiceRow(number: nil, title: "Other…", detail: "Type your own answer in Claude", accent: false)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Other: answer in Claude")
+            } else if !p.options.isEmpty {
+                // Several questions or "choose any": answered in Claude itself.
                 HStack(spacing: 6) {
                     Text(p.options.joined(separator: " · ") + (p.moreOptions > 0 ? "  +\(p.moreOptions)" : ""))
                         .sfont(size: 12, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1)
@@ -508,6 +521,32 @@ struct PromptPanel: View {
                 }
             }
         }
+    }
+
+    private func choiceRow(number: String?, title: String, detail: String, accent: Bool) -> some View {
+        HStack(spacing: 9) {
+            Group {
+                if let number {
+                    Text(number).sfont(size: 11, weight: .bold).foregroundStyle(.white)
+                } else {
+                    Image(systemName: "arrow.up.forward").sfont(size: 9, weight: .bold).foregroundStyle(Island.secondary)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .background(Circle().fill(accent ? Island.waiting.opacity(0.35) : Color.white.opacity(0.10)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).sfont(size: 13, weight: .semibold).foregroundStyle(accent ? .white : Island.secondary).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty {
+                    Text(detail).sfont(size: 11).foregroundStyle(Island.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.white.opacity(accent ? 0.10 : 0.05)))
+        .contentShape(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous))
     }
 
     private var permission: some View {
@@ -543,10 +582,12 @@ struct PromptPanel: View {
                     Pill(title: "Skip", height: 26, stretch: false)
                 }
                 .accessibilityLabel("Not now: \(p.session)")
-                Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
+                if !p.canChoose {
+                    Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                        Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
+                    }
+                    .accessibilityLabel("Answer in Claude: \(p.session)")
                 }
-                .accessibilityLabel("Answer in Claude: \(p.session)")
             } else {
                 if p.confirming {
                     Text("Confirm to run it · reverts in \(Int(AllowConfirmation.timeout))s").sfont(size: 11, weight: .medium)
@@ -1143,6 +1184,11 @@ struct IslandBody: View {
         VStack(alignment: .leading, spacing: 10) {
             if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
+            // The question card has the island to itself: say what waits behind it (the pager below reaches it).
+            if let p = state.prompt, p.canChoose, state.more > 0 {
+                Text("+\(state.more) more session\(state.more == 1 ? "" : "s"): use the arrows to see \(state.more == 1 ? "it" : "them")")
+                    .sfont(size: 11, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1).padding(.horizontal, 4)
+            }
             if let f = state.focus { SubagentTree(focus: f) }
             ForEach(state.rows) { SessionRow(row: $0, tree: state.subagentTree) }
             Footer(state: state).padding(.top, 4)

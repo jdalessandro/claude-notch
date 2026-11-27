@@ -7,8 +7,9 @@ import Foundation
 enum IntentBridge {
     enum Action: Sendable {
         case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings, focusSubagents
+        case pickAnswer
     }
-    static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
+    static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String, _ option: Int) -> Void)?
 }
 
 /// Intents must be compiled into the app *and* the widget. Each carries the request it answers, so a duplicated or
@@ -20,7 +21,7 @@ struct AllowIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.allow, sessionId, requestId)
+        IntentBridge.handler?(.allow, sessionId, requestId, 0)
         return .result()
     }
 }
@@ -33,7 +34,7 @@ struct AllowSessionIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.allowSession, sessionId, requestId)
+        IntentBridge.handler?(.allowSession, sessionId, requestId, 0)
         return .result()
     }
 }
@@ -45,7 +46,7 @@ struct DenyIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.deny, sessionId, requestId)
+        IntentBridge.handler?(.deny, sessionId, requestId, 0)
         return .result()
     }
 }
@@ -58,7 +59,7 @@ struct OpenSessionIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String, requestId: String = "") { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.open, sessionId, requestId)
+        IntentBridge.handler?(.open, sessionId, requestId, 0)
         return .result()
     }
 }
@@ -71,7 +72,7 @@ struct ReviewIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.review, sessionId, requestId)
+        IntentBridge.handler?(.review, sessionId, requestId, 0)
         return .result()
     }
 }
@@ -83,7 +84,7 @@ struct PageIntent: LiveActivityIntent {
     init() {}
     init(forward: Bool) { self.forward = forward }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "")
+        IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "", 0)
         return .result()
     }
 }
@@ -96,7 +97,23 @@ struct FocusSubagentsIntent: LiveActivityIntent {
     init() {}
     init(sessionId: String) { self.sessionId = sessionId }
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.focusSubagents, sessionId, "")
+        IntentBridge.handler?(.focusSubagents, sessionId, "", 0)
+        return .result()
+    }
+}
+
+/// Answers Claude's question with choice number `option` (0-based).
+struct PickAnswerIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Answer"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    @Parameter(title: "Choice") var option: Int
+    init() {}
+    init(sessionId: String, requestId: String, option: Int) {
+        self.sessionId = sessionId; self.requestId = requestId; self.option = option
+    }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.pickAnswer, sessionId, requestId, option)
         return .result()
     }
 }
@@ -106,7 +123,7 @@ struct RefreshQuotaIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Refresh plan limits"
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.refreshQuota, "", "")
+        IntentBridge.handler?(.refreshQuota, "", "", 0)
         return .result()
     }
 }
@@ -116,7 +133,7 @@ struct OpenSettingsIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Open settings"
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.openSettings, "", "")
+        IntentBridge.handler?(.openSettings, "", "", 0)
         return .result()
     }
 }

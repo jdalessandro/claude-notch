@@ -8,7 +8,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - README rewritten for users (install, first run, features, settings); the full reference and troubleshooting moved to
   `docs/GUIDE.md`; build-from-source steps moved to CONTRIBUTING; fresh screenshots.
 
+### Added
+- **Answer Claude's questions from the island.** The question card lists the choices (numbered, with Claude's
+  descriptions, titles wrap to two lines, descriptions clip to one); a tap answers through the hook (`updatedInput.answers`). **Other…** opens the
+  session. The card takes the island while it waits (page 0; the other sessions are on the pages after it, and the island never pages away from it by itself). Multi-part and "choose any" questions still go to Claude.
+
 ### Changed
+- A session whose question was let through to Claude ("Other…") reads "Waiting for your answer in Claude" instead of the tool name.
 - **Island colours**: coral = working (the waveform), orange = waiting for you, blue = ready for review, red = negative (failed,
   destructive, Deny), green = positive (Allow / Confirm). Plan-limit bars are blue and context rings coral, turning orange
   (75% / 65%) then red (90% / 85%, with a "!"). Only the "need you" count is tinted in the header.

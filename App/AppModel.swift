@@ -229,6 +229,18 @@ final class AppModel {
         open(session)
     }
 
+    /// Answers Claude's question with the chosen option: the hook adds it to the tool input, so Claude carries on
+    /// without showing its own question. A request the hook already left is detached instead of reported as answered.
+    func answerChoice(_ session: AgentSession, option: Int) {
+        guard let q = session.pending?.question, q.canAnswerInline, q.options.indices.contains(option) else { return reconcile() }
+        if broker.answerQuestion(session.id, question: q.text, choice: q.options[option]) {
+            store.resolvePermission(session.id, allowed: true)
+        } else {
+            store.detachPending(session.id)
+        }
+        reconcile()
+    }
+
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
         let reason = decision == .deny ? "Denied from NotchBot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
@@ -339,8 +351,9 @@ final class AppModel {
         let ids = Set([state.prompt?.requestId].compactMap { $0 })
         visibleSince = visibleSince.filter { ids.contains($0.key) }
         for id in ids where visibleSince[id] == nil { visibleSince[id] = now }
-        if state.prompt?.requestId != lastPromptId {
-            lastPromptId = state.prompt?.requestId
+        let shown = state.prompt?.requestId
+        if shown != lastPromptId {
+            lastPromptId = shown
             promptChangedAt = now
         }
     }
@@ -422,7 +435,7 @@ final class AppModel {
     }
 
     /// Answers an Allow/Deny/Open/Done tap from the island. A tap for a request that is no longer the live one is ignored.
-    func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String) {
+    func handleIntent(_ action: IntentBridge.Action, sessionId: String, requestId: String, option: Int = 0) {
         holdPage()  // the user is using the island: stop turning pages under them
         switch action {
         case .refreshQuota:
@@ -473,6 +486,14 @@ final class AppModel {
         where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland && s.pending?.destructive != true:
             answerAllowForSession(sessionId)
         case .allow, .allowSession, .deny, .review: break
+        case .pickAnswer where s.isAnswerable(requestId: requestId):
+            // A card that has only just appeared may not be the one the user aimed at.
+            guard IslandGuard.allowAccepted(visibleSince: visibleSince[requestId]) else {
+                activityTrace("pick ignored: choices visible < \(IslandGuard.tapDelay)s")
+                return
+            }
+            answerChoice(s, option: option)
+        case .pickAnswer: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
         case .nextPage, .previousPage, .refreshQuota, .openSettings, .focusSubagents: break
@@ -695,7 +716,11 @@ final class AppModel {
         _ = store.apply(
             e("PermissionRequest", "api-gateway", reply: true) {
                 $0.toolName = "AskUserQuestion"
-                let opts = ["Postgres", "SQLite", "DynamoDB"].map { JSONValue.object(["label": .string($0)]) }
+                let opts = [
+                    ("Postgres", "Relational, strong consistency, good for queryable audit trails."),
+                    ("SQLite", "Embedded file-based database, simple and zero-ops."),
+                    ("DynamoDB", "Managed AWS NoSQL store, scales for high write volume."),
+                ].map { JSONValue.object(["label": .string($0.0), "description": .string($0.1)]) }
                 let q = JSONValue.object([
                     "question": .string("Which database should store the audit log?"), "header": .string("Database"),
                     "multiSelect": .bool(false), "options": .array(opts),

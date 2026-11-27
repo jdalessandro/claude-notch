@@ -48,9 +48,15 @@ public struct AskedQuestion: Sendable, Equatable {
     public var header: String?
     public var text: String
     public var options: [String]
+    /// Each choice's one-line explanation, parallel to `options` ("" when it has none).
+    public var descriptions: [String] = []
     public var multiSelect: Bool
     /// How many questions the tool call contains (the first is shown).
     public var total: Int
+
+    /// Whether the island can answer it by itself: one single-select question with choices. Anything else
+    /// (several questions, "choose any") is answered in Claude.
+    public var canAnswerInline: Bool { total == 1 && !multiSelect && !options.isEmpty }
 
     public static let toolName = "AskUserQuestion"
 
@@ -59,14 +65,20 @@ public struct AskedQuestion: Sendable, Equatable {
             !text.isEmpty
         else { return nil }
         var options: [String] = []
+        var descriptions: [String] = []
         if case .array(let opts)? = first["options"] {
             for o in opts {
-                if let label = o["label"]?.stringValue ?? o.stringValue, !label.isEmpty { options.append(label) }
+                if let label = o["label"]?.stringValue ?? o.stringValue, !label.isEmpty {
+                    options.append(label)
+                    descriptions.append(o["description"]?.stringValue ?? "")
+                }
             }
         }
         var multi = false
         if case .bool(let b)? = first["multiSelect"] { multi = b }
-        return AskedQuestion(header: first["header"]?.stringValue, text: text, options: options, multiSelect: multi, total: qs.count)
+        return AskedQuestion(
+            header: first["header"]?.stringValue, text: text, options: options, descriptions: descriptions, multiSelect: multi,
+            total: qs.count)
     }
 }
 

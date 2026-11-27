@@ -70,7 +70,9 @@ public enum IslandGuard {
     /// Whether the island may turn to the next page by itself right now.
     public static func canAutoTurn(state: NotchActivityState, promptChangedAt: Date, now: Date = .now) -> Bool {
         guard state.pages > 1 else { return false }
-        if state.rows.contains(where: { $0.kind == .approval && $0.requestId != nil }) { return false }
+        if state.rows.contains(where: { ($0.kind == .approval || $0.kind == .question) && $0.requestId != nil }) { return false }
+        // Never turn away from a question card on its own.
+        if state.prompt?.canChoose == true { return false }
         return now.timeIntervalSince(promptChangedAt) >= promptSettle
     }
 

@@ -3,7 +3,9 @@ import Foundation
 extension AgentSession {
     /// One-line description of what the session is doing right now.
     public var activity: String {
-        switch status {
+        // The question was let through to Claude's own prompt ("Other…"): say so rather than naming the tool.
+        if status == .working, currentTool == AskedQuestion.toolName { return "Waiting for your answer in Claude" }
+        return switch status {
         case .working:
             mainTurnEnded && runningSubagents > 0
                 ? "Waiting on \(runningSubagents) subagent\(runningSubagents == 1 ? "" : "s")" : (currentToolDetail ?? "Thinking…")
@@ -87,6 +89,15 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         /// What "Allow for session" would cover ("npm install"); nil when the option isn't offered (never for a
         /// destructive command).
         public var sessionScope: String?
+        /// The island can answer this question itself: `choices` are shown on the card and a tap answers Claude.
+        /// Otherwise (several questions, "choose any") it is answered in Claude.
+        public var canChoose = false
+        public var choices: [Choice] = []
+        public struct Choice: Codable, Hashable, Sendable {
+            public var label: String
+            public var detail: String
+            public init(label: String, detail: String) { self.label = label; self.detail = detail }
+        }
     }
 
     public enum Phase: String, Codable, Sendable { case idle, working, needsYou, done }
@@ -199,7 +210,12 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
             subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer, branch: s.displayBranch.map { clip($0, 22) },
             destructive: p.destructive, confirming: p.destructive && p.id.uuidString == confirming,
-            sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil)
+            sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil,
+            canChoose: p.canAnswer && q?.canAnswerInline == true,
+            choices: p.canAnswer && q?.canAnswerInline == true
+                ? (q?.options ?? []).prefix(maxOptions).enumerated().map { i, label in
+                    Prompt.Choice(label: clip(label, 80), detail: clip(i < (q?.descriptions.count ?? 0) ? q!.descriptions[i] : "", 100))
+                } : [])
     }
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
@@ -236,12 +252,19 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         let chosen = featuredRequestId.flatMap { id in active.first { $0.pending?.id.uuidString == id } }
         let featured = chosen ?? active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
         let prompt = featured.flatMap { Self.prompt(for: $0, confirming: confirming) }
+        // A question with choices is tall: it takes the island, and the other sessions wait behind it (Skip, or answer).
         let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
+        let dedicated = prompt?.canChoose == true
         let rest = active.filter { $0.id != featured?.id }
         // Pages wrap around, so "next" on the last page returns to the first.
-        let pages = max(1, (rest.count + limit - 1) / limit)
+        // Under a dedicated question card, page 0 is the card alone and the pages after it are the other sessions.
+        let pages = dedicated ? 1 + (rest.count + maxRows - 1) / maxRows : max(1, (rest.count + limit - 1) / limit)
         let current = ((page % pages) + pages) % pages
-        let rows = rest.dropFirst(current * limit).prefix(limit).map { s -> Row in
+        let pageRest: ArraySlice<AgentSession> =
+            dedicated
+            ? (current == 0 ? [] : rest.dropFirst((current - 1) * maxRows).prefix(maxRows))
+            : rest.dropFirst(current * limit).prefix(limit)
+        let rows = pageRest.map { s -> Row in
             let k = kind(of: s)
             return Row(
                 id: s.id, name: clip(s.displayTitle, 32), kind: k, detail: clip(detail(of: s, kind: k), 90),
@@ -266,7 +289,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             }
         return NotchActivityState(
             phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
-            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: focused == nil ? Array(rows) : [],
+            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: dedicated && current > 0 ? nil : prompt,
+            rows: focused == nil ? Array(rows) : [],
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
             pages: pages, reviews: active.filter(\.needsReview).count, focus: focused)

@@ -212,7 +212,13 @@ public struct HookReply: Codable, Sendable, Equatable {
     public var reason: String?
     /// Permission updates to apply with an allow (`hookSpecificOutput.decision.updatedPermissions`).
     public var updatedPermissions: [JSONValue]?
-    public init(decision: PermissionDecision, reason: String? = nil, updatedPermissions: [JSONValue]? = nil) {
-        self.decision = decision; self.reason = reason; self.updatedPermissions = updatedPermissions
+    /// An answer to Claude's `AskUserQuestion`, as question text -> chosen label. The hook adds it to the tool input
+    /// (`updatedInput.answers`), so Claude takes it as answered and never shows its own question.
+    public var answers: [String: String]?
+    public init(
+        decision: PermissionDecision, reason: String? = nil, updatedPermissions: [JSONValue]? = nil,
+        answers: [String: String]? = nil
+    ) {
+        self.decision = decision; self.reason = reason; self.updatedPermissions = updatedPermissions; self.answers = answers
     }
 }
