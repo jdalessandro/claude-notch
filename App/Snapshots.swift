@@ -50,13 +50,18 @@ enum IslandSnapshots {
             ("working", busy(sessions)),
             ("permission", sessions.filter { $0.pending?.isQuestion != true }),
             ("question", sessions),
+            ("choices", sessions),
         ]
         var overflows: [String] = []
         for size in Preferences.IslandSize.allCases {
             for (kind, subset) in byKind {
-                var st = NotchActivityState.make(sessions: subset, quota: quota, maxRows: size.maxRows)
+                let ask = subset.first { $0.pending?.isQuestion == true }?.pending?.id.uuidString
+                var st = NotchActivityState.make(
+                    sessions: subset, quota: quota, maxRows: size.maxRows, choosing: kind == "choices" ? ask : nil)
                 st.scale = size.scale
-                if kind != "question" { write(expanded(st), dir.appendingPathComponent("expanded-\(kind)-\(size.title.lowercased()).png")) }
+                if kind != "question" && kind != "choices" {
+                    write(expanded(st), dir.appendingPathComponent("expanded-\(kind)-\(size.title.lowercased()).png"))
+                }
                 let w = contentWidth(of: st)
                 if w > Self.bodyWidth + 0.5 {
                     overflows.append(
@@ -64,6 +69,9 @@ enum IslandSnapshots {
                 }
             }
         }
+        // The question's choices, opened from the card's "Answer".
+        let choosing = NotchActivityState.make(
+            sessions: sessions, quota: quota, choosing: sessions.first { $0.pending?.isQuestion == true }?.pending?.id.uuidString)
         // A session's subagent tree in place of the list: without a request card, and under one (an orange subagent).
         let working3 = sessions.filter { $0.pending == nil }
         let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "infra-tools")
@@ -71,7 +79,8 @@ enum IslandSnapshots {
             sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, focus: "web-dashboard")
         for (name, st) in [
             ("expanded-subagents", tree), ("expanded-subagents-permission", treeAsking),
-            ("expanded-question", question), ("expanded-permission", permission), ("expanded-permission-confirm", confirm),
+            ("expanded-question", question), ("expanded-question-choices", choosing), ("expanded-permission", permission),
+            ("expanded-permission-confirm", confirm),
             ("expanded-permission-allow", allow),
             ("expanded-working", working),
             ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),

@@ -540,10 +540,18 @@ struct PromptPanel: View {
                     Pill(title: "Skip", height: 26, stretch: false)
                 }
                 .accessibilityLabel("Not now: \(p.session)")
-                Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
+                if p.canChoose {
+                    // Opens the choices as their own view (Back returns here); the pick answers Claude in place.
+                    Button(intent: ChooseAnswerIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                        Pill(title: "Answer", tint: .white, filled: true, height: 26, stretch: false)
+                    }
+                    .accessibilityLabel("Choose an answer: \(p.session)")
+                } else {
+                    Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                        Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
+                    }
+                    .accessibilityLabel("Answer in Claude: \(p.session)")
                 }
-                .accessibilityLabel("Answer in Claude: \(p.session)")
             } else {
                 if p.confirming {
                     Text("Confirm to run it · reverts in \(Int(AllowConfirmation.timeout))s").sfont(size: 11, weight: .medium)
@@ -871,6 +879,79 @@ struct TreeLineView: View {
     }
 }
 
+// MARK: - Question choices
+
+/// One question's choices in place of the session list, laid out the way Claude asks it: numbered options, each with
+/// its explanation under it, and "Other" last. A tap on an option answers Claude; "Other" opens the session so the
+/// answer can be typed there. Back returns to the sessions (the question stays pending). Same frame and Back pill as
+/// the subagent tree.
+struct QuestionChoices: View {
+    let choice: NotchActivityState.Choice
+    @Environment(\.islandScale) private var k
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button(intent: ChooseAnswerIntent(sessionId: "", requestId: "")) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left").sfont(size: 9, weight: .bold)
+                        Text("Back").sfont(size: 11, weight: .semibold)
+                    }
+                    .foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 8 * k).padding(.vertical, 3 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.14))).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Back to sessions")
+                Text(choice.session).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                Spacer(minLength: 4)
+                if let h = choice.header { Badge(h) }
+            }
+            Text(choice.text).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 2).padding(.top, 1)
+            ForEach(Array(choice.options.enumerated()), id: \.offset) { i, o in
+                Button(intent: PickAnswerIntent(sessionId: choice.sessionId, requestId: choice.requestId, option: i)) {
+                    row(number: "\(i + 1)", title: o.label, detail: o.detail, accent: true)
+                }
+                .buttonStyle(.plain).accessibilityLabel(o.detail.isEmpty ? o.label : "\(o.label), \(o.detail)")
+                .accessibilityHint("Answers Claude")
+            }
+            Button(intent: OpenSessionIntent(sessionId: choice.sessionId, requestId: choice.requestId)) {
+                row(number: nil, title: "Other…", detail: "Type your own answer in Claude", accent: false)
+            }
+            .buttonStyle(.plain).accessibilityLabel("Other: answer in Claude")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
+        .overlay(
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                .strokeBorder(Island.waiting.opacity(0.6), lineWidth: 1))
+    }
+
+    private func row(number: String?, title: String, detail: String, accent: Bool) -> some View {
+        HStack(spacing: 9) {
+            Group {
+                if let number {
+                    Text(number).sfont(size: 11, weight: .bold).foregroundStyle(.white)
+                } else {
+                    Image(systemName: "arrow.up.forward").sfont(size: 9, weight: .bold).foregroundStyle(Island.secondary)
+                }
+            }
+            .frame(width: 20 * k, height: 20 * k)
+            .background(Circle().fill(accent ? Island.waiting.opacity(0.35) : Color.white.opacity(0.10)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).sfont(size: 13, weight: .semibold).foregroundStyle(accent ? .white : Island.secondary).lineLimit(1)
+                if !detail.isEmpty {
+                    Text(detail).sfont(size: 11).foregroundStyle(Island.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.white.opacity(accent ? 0.10 : 0.05)))
+        .contentShape(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous))
+    }
+}
+
 // MARK: - Footer
 
 /// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
@@ -1141,6 +1222,7 @@ struct IslandBody: View {
         VStack(alignment: .leading, spacing: 10) {
             if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
+            if let c = state.choice { QuestionChoices(choice: c) }
             if let f = state.focus { SubagentTree(focus: f) }
             ForEach(state.rows) { SessionRow(row: $0, tree: state.subagentTree) }
             Footer(state: state).padding(.top, 4)

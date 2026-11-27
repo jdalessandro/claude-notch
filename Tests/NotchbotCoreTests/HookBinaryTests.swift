@@ -83,6 +83,28 @@ import Testing
         #expect(r.code == 0)
     }
 
+    @Test func aQuestionAnswerIsMergedIntoTheToolInput() throws {
+        try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path), "build notchbot-hook first")
+        let path = "/tmp/cn-hook-ans-\(getpid()).sock"
+        let server = NotchServer(path: path) { _, reply in
+            reply?.send(HookReply(decision: .allow, answers: ["Which database?": "SQLite"]))
+        }
+        try server.start(); defer { server.stop() }
+        let r = try run(
+            stdin:
+                #"{"session_id":"abc","hook_event_name":"PermissionRequest","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which database?","header":"DB","multiSelect":false,"options":[{"label":"Postgres","description":"x"},{"label":"SQLite","description":"y"}]}]}}"#,
+            args: ["--interactive"], socket: path)
+        let hso = (try JSONSerialization.jsonObject(with: Data(r.out.utf8)) as! [String: Any])["hookSpecificOutput"] as! [String: Any]
+        let d = hso["decision"] as! [String: Any]
+        #expect(d["behavior"] as? String == "allow")
+        let input = try #require(d["updatedInput"] as? [String: Any])
+        #expect((input["answers"] as? [String: String]) == ["Which database?": "SQLite"])
+        // The original questions travel along untouched, or Claude Code would not recognise the call.
+        let qs = try #require(input["questions"] as? [[String: Any]])
+        #expect(qs.first?["question"] as? String == "Which database?" && (qs.first?["options"] as? [Any])?.count == 2)
+        #expect(r.code == 0)
+    }
+
     @Test func nonInteractiveAndNoAppAreSilent() throws {
         try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path))
         // No server listening: must exit 0 with no output, quickly.

@@ -83,8 +83,10 @@ It opens by itself when something needs you (and on a finished result, if you li
 - **Approve from the island.** A permission request shows the exact command with **Allow / Deny**. Requests from a
   subagent say so. Approvals are answered only on this card: any other waiting session shows a quiet **Review** that
   brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) keeps green **Allow** / red **Deny** but asks you to tap Allow twice (**Allow**, then **Confirm**).
-- **Questions.** When Claude asks you something, the island shows the question and its choices; **Answer in Claude**
-  jumps to the session, **Not now** dismisses it.
+- **Questions.** When Claude asks you something, the island shows the question; **Answer** opens its choices (numbered,
+  with Claude's descriptions) and a tap answers Claude, no switching windows. **Other…** jumps to the session to type
+  your own answer, **Back** returns to your sessions, **Skip** dismisses it. Questions with several parts or
+  "choose any" are answered in Claude (**Answer in Claude**).
 - **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,
   context usage, lines changed and token count. Click a session to jump to the app it runs in.
 - **A subagent tree.** Each session lists its subagents (what each is doing, tool-call counts, last result). A session

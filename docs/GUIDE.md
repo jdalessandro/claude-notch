@@ -24,7 +24,7 @@ you haven't reviewed. Green is Allow, red is Deny, failed or destructive.
 
 1. **Header**: total agents, how many need you, how many are working, and how many subagents run.
 2. **The most urgent request**, featured: a permission request (exact command, **Allow / Deny**), or a question (its
-   choices, **Answer in Claude** / **Not now**). Urgency order: needs permission, needs input, failed, working, done, ended.
+   choices, **Answer** / **Skip**). Urgency order: needs permission, needs input, failed, working, done, ended.
 3. **Session cards** (up to three per page, two at the *Large* and *Larger* sizes): name, branch, status, elapsed time,
    your prompt, current tool, context use, lines changed, tool calls, token count, and a subagent summary
    ("2 running · 1 done"). Tap a card's **Subagents** header to expand every subagent with what it is doing, its tool-call
@@ -94,7 +94,10 @@ With *Approve permissions from the island* on (the default), Claude's prompt wai
 
 - Claude waits up to Claude Code's 10-minute hook timeout, and the terminal prompt doesn't appear meanwhile.
 - If NotchBot isn't running, the hook exits immediately and the normal prompt appears. It never blocks a session.
-- Questions (`AskUserQuestion`) are answered in Claude itself: **Answer in Claude** opens the session.
+- Questions (`AskUserQuestion`): **Answer** shows the choices in place of the session list; tapping one answers Claude
+  through the hook (`updatedInput.answers`), so Claude carries on without asking again. **Other…** opens the session to
+  type a free answer; **Back** returns to the list with the question still waiting. A question with several parts or
+  "choose any" can't be answered in the island: its card reads **Answer in Claude**.
 - A stale or repeated tap is ignored: each button resolves the exact request it was shown for.
 - Prefer the terminal? Turn the setting off for observe-only mode.
 

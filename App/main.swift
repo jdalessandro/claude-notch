@@ -27,7 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onOpenSettings = { [weak self] in
             guard let self else { return }; self.settingsWindow.show(model: self.model)
         }
-        IntentBridge.handler = { [weak self] action, sid, rid in self?.model.handleIntent(action, sessionId: sid, requestId: rid) }
+        IntentBridge.handler = { [weak self] action, sid, rid, opt in
+            self?.model.handleIntent(action, sessionId: sid, requestId: rid, option: opt)
+        }
         model.start(demo: demo)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

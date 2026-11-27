@@ -8,6 +8,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - README rewritten for users (install, first run, features, settings); the full reference and troubleshooting moved to
   `docs/GUIDE.md`; build-from-source steps moved to CONTRIBUTING; fresh screenshots.
 
+### Added
+- **Answer Claude's questions from the island.** **Answer** opens the choices as their own view (numbered, with Claude's
+  descriptions, a Back button like the subagent tree); a tap answers through the hook (`updatedInput.answers`).
+  **Other…** opens the session. Multi-part and "choose any" questions still go to Claude.
+
 ### Changed
 - **Island colours**: coral = working (the waveform), orange = waiting for you, blue = ready for review, red = negative (failed,
   destructive, Deny), green = positive (Allow / Confirm). Plan-limit bars are blue and context rings coral, turning orange

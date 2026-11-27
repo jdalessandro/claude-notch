@@ -87,6 +87,23 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         /// What "Allow for session" would cover ("npm install"); nil when the option isn't offered (never for a
         /// destructive command).
         public var sessionScope: String?
+        /// The island can answer this question itself (see `Choice`); otherwise it is answered in Claude.
+        public var canChoose = false
+    }
+
+    /// A question's choices as their own view, in place of the session list (the way the subagent tree is): tapping a
+    /// choice answers Claude. Shown only for a single-select question the island can answer.
+    public struct Choice: Codable, Hashable, Sendable {
+        public struct Option: Codable, Hashable, Sendable {
+            public var label: String
+            public var detail: String
+        }
+        public var sessionId: String
+        public var requestId: String
+        public var session: String
+        public var header: String?
+        public var text: String
+        public var options: [Option]
     }
 
     public enum Phase: String, Codable, Sendable { case idle, working, needsYou, done }
@@ -136,6 +153,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     public var limitsUnknown: Bool { fiveHour == nil && weekly == nil }
     /// The subagent tree being shown in place of the session rows, when the user tapped a session's subagent pill.
     public var focus: Focus?
+    /// The question being answered in place of the session list; the featured card is then not shown.
+    public var choice: Choice?
     /// Whether the subagent pill opens the tree (the "Subagents" display setting; the widget can't read it).
     public var subagentTree = true
 
@@ -199,18 +218,32 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
             subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer, branch: s.displayBranch.map { clip($0, 22) },
             destructive: p.destructive, confirming: p.destructive && p.id.uuidString == confirming,
-            sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil)
+            sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil,
+            canChoose: p.canAnswer && q?.canAnswerInline == true)
     }
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
         featuredRequestId: String? = nil, confirmingRequestId: String? = nil, focus: String? = nil,
-        limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
+        limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true, choosing: String? = nil
     ) -> NotchActivityState {
         var st = build(
-            sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: featuredRequestId,
+            sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: choosing ?? featuredRequestId,
             confirming: confirmingRequestId, focus: focus)
+        // The choices replace the card and the list. Only the featured request can be chosen for, and only while it is answerable.
+        if let id = choosing, let p = st.prompt, p.requestId == id, p.canChoose, p.isQuestion,
+            let s = sessions.first(where: { $0.id == p.sessionId }), let q = s.pending?.question
+        {
+            st.choice = Choice(
+                sessionId: p.sessionId, requestId: id, session: p.session, header: p.header, text: clip(q.text, 200),
+                options: q.options.prefix(maxOptions).enumerated().map { i, label in
+                    Choice.Option(label: clip(label, 40), detail: clip(i < q.descriptions.count ? q.descriptions[i] : "", 90))
+                })
+            st.prompt = nil
+            st.rows = []
+            st.focus = nil
+        }
         st.limitsNote = limitsNote
         st.hooksMissing = !hooksInstalled
         return st

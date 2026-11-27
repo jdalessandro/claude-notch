@@ -34,6 +34,8 @@ if args.contains("--install") || args.contains("--uninstall") || args.contains("
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
 guard var payload = try? JSONDecoder().decode(HookPayload.self, from: input) else { exit(0) }
+// An answer is merged into the tool input exactly as Claude sent it, so keep the untruncated copy.
+let originalInput = payload.toolInput
 // Cap free text so one giant prompt or file write can't make the event huge (and slow to deliver).
 payload = payload.truncated()
 
@@ -63,6 +65,14 @@ case .allow, .deny:
         let d = try? JSONEncoder().encode(u), let obj = try? JSONSerialization.jsonObject(with: d)
     {
         decision["updatedPermissions"] = obj
+    }
+    // A question answered in the island: the original input plus `answers`, which Claude Code takes as answered.
+    if reply.decision == .allow, let a = reply.answers, !a.isEmpty, payload.toolName == AskedQuestion.toolName,
+        let orig = originalInput, let d = try? JSONEncoder().encode(orig),
+        var input = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+    {
+        input["answers"] = a
+        decision["updatedInput"] = input
     }
     let out: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision]]
     if let d = try? JSONSerialization.data(withJSONObject: out) { FileHandle.standardOutput.write(d) }

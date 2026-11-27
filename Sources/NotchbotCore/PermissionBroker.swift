@@ -51,6 +51,14 @@ public struct PermissionBroker {
         return true
     }
 
+    /// Answers a held `AskUserQuestion` with the chosen label (`updatedInput.answers`). False when no hook is waiting.
+    @discardableResult
+    public mutating func answerQuestion(_ session: String, question: String, choice: String) -> Bool {
+        guard let s = sinks.removeValue(forKey: session) else { return false }
+        s.send(HookReply(decision: .allow, answers: [question: choice]))
+        return true
+    }
+
     /// The hook went away on its own (timeout, Ctrl-C, answered in the terminal): forget it without replying.
     public mutating func peerClosed(_ session: String, sink: any ReplySink) {
         if let current = sinks[session], current === sink { sinks[session] = nil }
