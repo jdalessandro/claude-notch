@@ -26,9 +26,21 @@ if [ "$CHANNEL" = ci ]; then
 else
   BUILD=$VERSION; LABEL=$VERSION; TAG="v$VERSION"
 fi
-APP=dist/Notchbot.app
-OUT=dist/Notchbot-$LABEL
+# Everything after the build happens in a private work dir, so a rebuild of dist/ (make install, make bundle) during the
+# notarization wait can't swap the app out from under the staple.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+APP=$WORK/Notchbot.app
+OUT=$WORK/Notchbot-$LABEL
 die() { echo "error: $*" >&2; exit 1; }
+# Apple publishes the ticket a little after "Accepted", so a first staple can say "Record not found".
+staple() {
+  local n=0
+  until xcrun stapler staple "$1"; do
+    n=$((n+1)); [ "$n" -lt 12 ] || die "stapling $1 failed after $n tries (ticket not published, or the file changed after notarization)"
+    echo "ticket not ready, retry $n/12 in 20s"; sleep 20
+  done
+}
 
 echo "==> Preflight ($CHANNEL $LABEL)"
 TEAM=${NOTCHBOT_TEAM:-$(cat .xcode-team 2>/dev/null || true)}
@@ -54,6 +66,7 @@ make test
 
 echo "==> Build"
 CONFIG=Release ./scripts/bundle.sh
+cp -R dist/Notchbot.app "$APP"
 WIDGET=$APP/Contents/PlugIns/NotchbotWidget.appex
 stamp() { # before signing: any later edit would break the signature
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$1" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$1"
@@ -74,19 +87,20 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 echo "==> Notarize app"
 ditto -c -k --keepParent "$APP" "$OUT.zip"
 xcrun notarytool submit "$OUT.zip" --keychain-profile "$NOTARY_PROFILE" --wait
-xcrun stapler staple "$APP"; rm "$OUT.zip"
+staple "$APP"; rm "$OUT.zip"
 
 echo "==> dmg"
-STAGE=$(mktemp -d); cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-rm -f "$OUT.dmg"; hdiutil create -volname "NotchBot" -srcfolder "$STAGE" -ov -format UDZO "$OUT.dmg"; rm -rf "$STAGE"
+DMGSRC=$(mktemp -d); cp -R "$APP" "$DMGSRC/"; ln -s /Applications "$DMGSRC/Applications"
+rm -f "$OUT.dmg"; hdiutil create -volname "NotchBot" -srcfolder "$DMGSRC" -ov -format UDZO "$OUT.dmg"; rm -rf "$DMGSRC"
 sign "$OUT.dmg"
 xcrun notarytool submit "$OUT.dmg" --keychain-profile "$NOTARY_PROFILE" --wait
-xcrun stapler staple "$OUT.dmg"
+staple "$OUT.dmg"
 
 echo "==> Verify like a stranger's Mac"
 spctl --assess --type execute -vv "$APP"
 spctl --assess --type open --context context:primary-signature -vv "$OUT.dmg"
-(cd dist && shasum -a 256 "Notchbot-$LABEL.dmg" > "Notchbot-$LABEL.dmg.sha256" && cat "Notchbot-$LABEL.dmg.sha256")
+(cd "$WORK" && shasum -a 256 "Notchbot-$LABEL.dmg" > "Notchbot-$LABEL.dmg.sha256" && cat "Notchbot-$LABEL.dmg.sha256")
+mkdir -p dist && cp "$OUT.dmg" "$OUT.dmg.sha256" dist/
 SHA=$(cut -d' ' -f1 "$OUT.dmg.sha256")
 
 if [ "$DRY" = 1 ]; then echo "Dry run: built $OUT.dmg, nothing published."; exit 0; fi
