@@ -5,10 +5,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [0.2.0] - Unreleased
 
 ### Changed
-- **Renamed from Claude Notch to Notchbot**, with a new pixel-art robot logo, so the name and mark no longer lean on
+- **Branding**: the name is styled **NotchBot** in the UI and docs (identifiers `Notchbot.app`, `notchbot-hook`,
+  `dev.notchbot.app` keep the lowercase form), and the robot logo sits at the top of the README.
+- **Renamed from Claude Notch to NotchBot**, with a new pixel-art robot logo, so the name and mark no longer lean on
   Anthropic's. The app is now `Notchbot.app` (bundle id `dev.notchbot.app`), the hook is `notchbot-hook`, the repo is
   `jdalessandro/notchbot` and the Homebrew tap is `jdalessandro/notchbot`. Hooks installed under the old name are
-  replaced on the next install. Notchbot is described everywhere as an unofficial companion for Claude Code.
+  replaced on the next install. NotchBot is described everywhere as an unofficial companion for Claude Code.
 - **The island is now a macOS Live Activity (ActivityKit, macOS 27.3+)** drawn by the system, replacing the custom AppKit
   overlay. Allow / Deny, Open and Done are App Intents that run inside the app and are matched to the exact request,
   so a stale or duplicated tap is ignored. The activity state is a small, tested, size-budgeted `NotchActivityState`.

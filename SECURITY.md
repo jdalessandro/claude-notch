@@ -2,7 +2,7 @@
 
 ## Trust model
 
-Notchbot is a local, single-user tool. It has no network code and sends nothing off the machine.
+NotchBot is a local, single-user tool. It has no network code and sends nothing off the machine.
 
 - **Hooks** run as you whenever Claude Code fires an event. `notchbot-hook` only reads the event JSON from stdin
   and forwards it to the app over a Unix socket. If the app is not running it exits silently, and it never blocks or

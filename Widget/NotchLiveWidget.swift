@@ -34,7 +34,14 @@ struct NotchbotActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Group {
-                        if s.sessions == 0 { IslandIdle(state: s, header: false) } else { IslandBody(state: s) }
+                        if s.sessions == 0 {
+                            // Short content makes the system round the island into a full pill. A minimum height
+                            // keeps the usual rounded-rectangle shape even with no limits row to fill it.
+                            IslandIdle(state: s, header: false)
+                                .frame(maxWidth: .infinity, minHeight: Island.idleMinHeight * s.scale, alignment: .topLeading)
+                        } else {
+                            IslandBody(state: s)
+                        }
                     }
                     .islandScale(s.scale)
                     .padding(.horizontal, Island.inset)

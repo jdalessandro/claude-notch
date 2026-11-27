@@ -35,6 +35,8 @@ extension View {
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
     static let inset: CGFloat = 17
+    /// Least height of the idle island's body, so the system keeps its rounded-rectangle shape instead of a pill.
+    static let idleMinHeight: CGFloat = 64
     /// The logo in the compact island, and the waveform beside it, sized from it: the tallest bar is this fraction of
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16

@@ -4,7 +4,7 @@ cask "notchbot" do
   sha256 "SHA256"
 
   url "https://github.com/jdalessandro/notchbot/releases/download/v#{version}/Notchbot-#{version}.dmg"
-  name "Notchbot"
+  name "NotchBot"
   desc "Unofficial notch companion for Claude Code: agent status, approvals and plan limits"
   homepage "https://github.com/jdalessandro/notchbot"
 

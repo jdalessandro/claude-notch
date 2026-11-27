@@ -629,7 +629,7 @@ struct IslandMenu: View {
             Button("Settings…") { model.onOpenSettings?() }.keyboardShortcut(",")
             Button("Mark all reviewed") { model.dismissAllReviewed() }
             Divider()
-            Button("Quit Notchbot") { NSApplication.shared.terminate(nil) }
+            Button("Quit NotchBot") { NSApplication.shared.terminate(nil) }
         } label: {
             Image(systemName: "ellipsis.circle").font(.system(size: 14))
         }

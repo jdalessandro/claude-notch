@@ -125,7 +125,7 @@ final class AppModel {
         } catch {
             lastError =
                 (error as? POSIXError)?.code == .EADDRINUSE
-                ? "Notchbot is already running." : "Socket: \(error.localizedDescription)"
+                ? "NotchBot is already running." : "Socket: \(error.localizedDescription)"
         }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -201,7 +201,7 @@ final class AppModel {
     }
 
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
-        let reason = decision == .deny ? "Denied from Notchbot" : nil
+        let reason = decision == .deny ? "Denied from NotchBot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
             store.resolvePermission(sessionId, allowed: decision == .allow)
         } else {
