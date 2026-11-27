@@ -2,7 +2,7 @@
 
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-11-27
 
 ### Docs
 - README rewritten for users (install, first run, features, settings); the full reference and troubleshooting moved to
