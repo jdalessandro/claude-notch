@@ -82,6 +82,9 @@ public struct PendingPermission: Sendable, Equatable, Identifiable {
     /// True when a hook process is blocked waiting for our answer (we can approve from the notch).
     public var canAnswer: Bool
     public var since: Date
+    /// Full length of the command / path asked about (the summary is clipped), and whether it is a high-risk one.
+    public var commandLength = 0
+    public var destructive = false
     /// Set when this "permission" is really Claude asking the user a question.
     public var question: AskedQuestion?
     /// Claude Code's suggested allow rule for this request, re-targeted to `destination: "session"`, and its short
@@ -354,7 +357,9 @@ public struct SessionStore: Sendable {
                 id: UUID(), toolName: p.toolName ?? "tool",
                 summary: asked?.text ?? Self.summarize(tool: p.toolName, input: p.toolInput) ?? (p.toolName ?? "tool"),
                 message: p.message, agentType: p.agentId == nil ? nil : p.agentType, agentId: p.agentId,
-                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now, question: asked,
+                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now,
+                commandLength: asked == nil ? (p.toolInput?["command"]?.stringValue?.count ?? 0) : 0,
+                destructive: CommandRisk.isDestructive(tool: p.toolName, input: p.toolInput, cwd: s.cwd), question: asked,
                 sessionRule: suggested?.rule, sessionScope: suggested?.label)
             s.attentionMessage = p.message
             if !alreadyAnnounced { effect = .notify(sessionId: sid, kind: .permission) }
