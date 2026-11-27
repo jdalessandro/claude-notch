@@ -449,6 +449,7 @@ struct SessionRow: View {
                     HStack(spacing: 6) {
                         if let b = row.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
                         Spacer(minLength: 6)
+                        stats
                         status
                     }
                 }
@@ -471,7 +472,14 @@ struct SessionRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface))
+                .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface)
+        )
+        .overlay {
+            if row.kind == .review {
+                RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                    .strokeBorder(Island.green.opacity(0.45), lineWidth: 1)
+            }
+        }
     }
 
     @ViewBuilder private var status: some View {
@@ -484,7 +492,7 @@ struct SessionRow: View {
         }
     }
 
-    /// Actions for a session waiting on you; otherwise its stats as badges.
+    /// Actions for a session waiting on you, on the detail line.
     @ViewBuilder private var trailing: some View {
         HStack(spacing: 5) {
             switch row.kind {
@@ -504,9 +512,18 @@ struct SessionRow: View {
                     Pill(title: "Answer", tint: Island.coral, filled: true, height: 24, stretch: false)
                 }
             case .input, .failed: openButton
-            case .review:
+            case .review, .working, .idle:
                 EmptyView()
-            case .working, .idle:
+            }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    /// A working or idle session's stats as badges, beside its status.
+    @ViewBuilder private var stats: some View {
+        HStack(spacing: 5) {
+            if row.kind == .working || row.kind == .idle {
                 if row.subagentTotal > 0 {
                     let running = row.subagents > 0
                     Stat(
