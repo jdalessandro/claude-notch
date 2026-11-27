@@ -39,7 +39,9 @@ struct NotchbotActivity: Widget {
                             // keeps the usual rounded-rectangle shape even with no limits row to fill it.
                             IslandIdle(state: s, header: false)
                                 .frame(maxWidth: .infinity, minHeight: Island.idleMinHeight * s.scale, alignment: .topLeading)
-                        } else { IslandBody(state: s) }
+                        } else {
+                            IslandBody(state: s)
+                        }
                     }
                     .islandScale(s.scale)
                     .padding(.horizontal, Island.inset)
