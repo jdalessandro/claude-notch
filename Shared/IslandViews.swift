@@ -276,6 +276,8 @@ struct Pill: View {
 struct Badge<Label: View>: View {
     var tint: Color? = nil
     var icon: String? = nil
+    /// A flexible badge truncates its text to the space it is given instead of claiming its full width.
+    var flexible = false
     @ViewBuilder var label: Label
     @Environment(\.islandScale) private var k
     var body: some View {
@@ -283,17 +285,17 @@ struct Badge<Label: View>: View {
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize()
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize(horizontal: !flexible, vertical: true)
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
-        .fixedSize()
+        .fixedSize(horizontal: !flexible, vertical: true)
     }
 }
 
 extension Badge where Label == Text {
-    init(_ text: String, tint: Color? = nil, icon: String? = nil) {
-        self.init(tint: tint, icon: icon) { Text(text) }
+    init(_ text: String, tint: Color? = nil, icon: String? = nil, flexible: Bool = false) {
+        self.init(tint: tint, icon: icon, flexible: flexible) { Text(text) }
     }
 }
 
@@ -430,7 +432,7 @@ struct PromptPanel: View {
 
 // MARK: - Session cards
 
-/// One session in two lines: name, branch and status; then what it is doing, with its actions or stats beside it.
+/// One session in three lines: its name; then branch and status; then what it is doing, with its actions or stats beside it.
 struct SessionRow: View {
     let row: NotchActivityState.Row
     @Environment(\.islandScale) private var k
@@ -439,14 +441,16 @@ struct SessionRow: View {
         // visible header and detail text themselves; the actions on the right keep their own buttons.
         VStack(alignment: .leading, spacing: 5) {
             Button(intent: OpenSessionIntent(sessionId: row.id)) {
-                HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-                            .layoutPriority(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
-                    Spacer(minLength: 6)
-                    status
+                    HStack(spacing: 6) {
+                        if let b = row.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
+                        Spacer(minLength: 6)
+                        status
+                    }
                 }
                 .contentShape(Rectangle())
             }
