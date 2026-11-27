@@ -5,7 +5,7 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshQuota }
+    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshQuota, openSettings }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -66,6 +66,16 @@ struct RefreshQuotaIntent: LiveActivityIntent {
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(.refreshQuota, "", "")
+        return .result()
+    }
+}
+
+/// Opens NotchBot's settings window (the island's gear icon).
+struct OpenSettingsIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Open settings"
+    init() {}
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.openSettings, "", "")
         return .result()
     }
 }

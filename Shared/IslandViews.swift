@@ -1,9 +1,9 @@
 import AppIntents
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
 // The island's views. They live in Shared so the widget draws them and the app can render the same views to PNG
-// (`ClaudeNotch --snapshot <dir>`) for docs and for checking layout without the real island.
+// (`Notchbot --snapshot <dir>`) for docs and for checking layout without the real island.
 // Styled after the system media island: big artwork, a bold title over a grey subtitle, a waveform on the right,
 // no outlines, generous continuous corners.
 
@@ -35,7 +35,18 @@ extension View {
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
     static let inset: CGFloat = 17
+    /// Least height of the idle island's body, so the system keeps its rounded-rectangle shape instead of a pill.
+    static let idleMinHeight: CGFloat = 64
+    /// The logo in the compact island, and the waveform beside it, sized from it: the tallest bar is this fraction of
+    /// the logo's height, so the two always read as a pair.
+    static let compactIcon: CGFloat = 16
+    static let compactWaveRatio: CGFloat = 0.7
+    static let badgeRed = Color(red: 1.0, green: 0.27, blue: 0.23)  // the system badge red
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
+    /// The robot's three tones. Change these to recolour the logo.
+    static let robotBase = coral
+    static let robotLight = Color(red: 0.933, green: 0.604, blue: 0.486)  // #EE9A7C
+    static let robotShadow = Color(red: 0.663, green: 0.333, blue: 0.227)  // #A9553A
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let red = Color(red: 1.0, green: 0.27, blue: 0.23)
@@ -87,48 +98,88 @@ extension NotchActivityState.Row {
 
 // MARK: - Artwork
 
-/// The radial burst drawn on the artwork: rounded rays of alternating length around a common centre.
-struct Burst: Shape {
-    var rays = 12
+/// The app's mark: a small 8-bit robot (antenna, boxy head, ear nubs, two eyes, a mouth slot), an original sprite on a
+/// 16 x 14 grid. `L`, `M` and `D` are its highlight, base and shadow tones. A size that is a multiple of 16pt puts
+/// every pixel on a whole device pixel (16pt = 2px a pixel on a Retina screen, 32pt = 4px).
+struct RobotMark: Shape {
+    static let grid = [
+        ".......LL.......",
+        ".......MM.......",
+        ".......MM.......",
+        "...LLLLLLLLLL...",
+        "..MMMMMMMMMMMM..",
+        "..MMMMMMMMMMMM..",
+        "MMMMMMMMMMMMMMMM",
+        "MMMM..MMMM..MMMM",
+        "MMMM..MMMM..MMMM",
+        "MMMMMMMMMMMMMMMM",
+        "..MMMM....MMMM..",
+        "..MMMMMMMMMMMM..",
+        "..DDDDDDDDDDDD..",
+        "...DDDDDDDDDD...",
+    ]
+    /// The tones to draw; nil draws every filled pixel as one solid shape (the menu-bar glyph).
+    var tones: Set<Character>?
+
     func path(in r: CGRect) -> Path {
-        let lengths: [CGFloat] = [1.0, 0.74, 0.92, 0.70, 0.98, 0.78, 0.90, 0.72, 1.0, 0.76, 0.94, 0.70]
-        let c = CGPoint(x: r.midX, y: r.midY)
-        let radius = min(r.width, r.height) / 2
-        let w = radius * 0.2
+        let cols = CGFloat(Self.grid[0].count), rows = CGFloat(Self.grid.count)
+        let cell = min(r.width / cols, r.height / rows)
+        let ox = r.midX - cols * cell / 2, oy = r.midY - rows * cell / 2
+        let bleed = cell * 0.01  // neighbouring runs overlap a hair so no seam shows between them
         var p = Path()
-        for i in 0..<rays {
-            let len = radius * lengths[i % lengths.count]
-            let ray = CGRect(x: -w / 2, y: -len, width: w, height: len - radius * 0.08)
-            let t = CGAffineTransform(translationX: c.x, y: c.y).rotated(by: CGFloat(i) / CGFloat(rays) * 2 * .pi)
-            p.addPath(Path(roundedRect: ray, cornerRadius: w / 2).applying(t))
+        for (y, row) in Self.grid.enumerated() {
+            let cells = Array(row)
+            var x = 0
+            while x < cells.count {
+                let tone = cells[x]
+                guard tone != ".", tones?.contains(tone) ?? true else { x += 1; continue }
+                var end = x
+                while end < cells.count, cells[end] == tone { end += 1 }
+                p.addRect(
+                    CGRect(
+                        x: ox + CGFloat(x) * cell - bleed, y: oy + CGFloat(y) * cell - bleed,
+                        width: CGFloat(end - x) * cell + bleed * 2, height: cell + bleed * 2))
+                x = end
+            }
         }
-        p.addEllipse(in: CGRect(x: c.x - w * 0.9, y: c.y - w * 0.9, width: w * 1.8, height: w * 1.8))
         return p
     }
 }
 
-/// Stands in for album art: the coral burst on its own, no tile. It does not change colour with state;
-/// the waveform and an amber badge carry that.
+/// The robot in its three tones.
+struct RobotView: View {
+    var body: some View {
+        ZStack {
+            RobotMark(tones: ["D"]).fill(Island.robotShadow)
+            RobotMark(tones: ["M"]).fill(Island.robotBase)
+            RobotMark(tones: ["L"]).fill(Island.robotLight)
+        }
+    }
+}
+
+/// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
+/// the waveform carries that, and the round red badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
+    /// Finished sessions waiting for review; a round red count on the robot's top right, like an app-icon badge.
     var badge = 0
     var body: some View {
-        Burst()
-            .fill(
-                LinearGradient(
-                    colors: [Color(red: 0.96, green: 0.60, blue: 0.45), Island.coral],
-                    startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .frame(width: size * 0.88, height: size * 0.88)
+        // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
+        // that sticks out of the view's frame.
+        let d = size * 0.8  // badge diameter
+        let pad = badge > 0 ? d * 0.4 : 0
+        RobotView()
             .frame(width: size, height: size)
-            // Kept inside the frame: the compact region clips anything that sticks out.
-            .overlay(alignment: .bottomTrailing) {
+            .padding(.top, pad).padding(.trailing, pad)
+            .overlay(alignment: .topTrailing) {
                 if badge > 0 {
-                    Text("\(badge)").font(.system(size: max(8, size * 0.36), weight: .bold, design: .rounded))
-                        .foregroundStyle(.black).monospacedDigit()
-                        .padding(.horizontal, size * 0.08).frame(minWidth: size * 0.5, minHeight: size * 0.5)
-                        .background(Capsule().fill(Island.amber))
-                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, size * 0.07)))
+                    Text(badge > 9 ? "9+" : "\(badge)")
+                        .font(.system(size: d * 0.62, weight: .bold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
+                        .frame(minWidth: d, minHeight: d)
+                        .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
+                        .background(Capsule().fill(Island.badgeRed))
+                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
     }
@@ -149,6 +200,7 @@ struct AgentWave: View {
     var pulse = 0
     var height: CGFloat = 18
     static let maxBars = 7
+    static let minBars = 5
 
     /// Bar `i`'s height (0.3...1) at beat `pulse`: deterministic, different per bar, never two beats alike.
     static func level(_ i: Int, _ pulse: Int) -> CGFloat {
@@ -161,16 +213,19 @@ struct AgentWave: View {
         let main = min(agents, Self.maxBars)
         let subs = min(subagents, Self.maxBars - main)
         if main + subs == 0 {
-            HStack(spacing: height * 0.16) {
+            HStack(spacing: height * 0.2) {
                 ForEach(0..<5, id: \.self) { _ in
-                    Circle().fill(Color.white.opacity(0.4)).frame(width: height * 0.15, height: height * 0.15)
+                    Circle().fill(Color.white.opacity(0.7)).frame(width: height * 0.2, height: height * 0.2)
                 }
             }
             .frame(height: height)
         } else {
+            // At least `minBars` bars so one agent still reads as a waveform; agents beyond that add bars (up to
+            // `maxBars`), and subagents are the thinner ones at the end.
+            let total = max(main + subs, Self.minBars)
             HStack(alignment: .center, spacing: height * 0.14) {
-                ForEach(0..<(main + subs), id: \.self) { i in
-                    let isSub = i >= main
+                ForEach(0..<total, id: \.self) { i in
+                    let isSub = i >= main && i < main + subs
                     // Fixed-size bar scaled vertically: the layout never changes between beats, so the system's
                     // snapshot can't catch the bars collapsed or missing mid-animation.
                     Capsule().fill(tint)
@@ -180,7 +235,6 @@ struct AgentWave: View {
             }
             .frame(height: height)
             .animation(.easeInOut(duration: 0.9), value: pulse)
-            .contentTransition(.identity)
         }
     }
 }
@@ -229,7 +283,7 @@ struct Badge<Label: View>: View {
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1)
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize()
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
@@ -257,7 +311,7 @@ struct Stat<Glyph: View, Value: View>: View {
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
             Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
         }
-        .monospacedDigit().lineLimit(1)
+        .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill(Color.white.opacity(0.08)))
         .fixedSize()
@@ -485,90 +539,80 @@ struct SessionRow: View {
 
 // MARK: - Footer
 
-/// One line: the two plan limits as short meters with when each resets, a refresh icon, and the pager when there is
-/// more than one page.
+/// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
+/// page.
 struct Footer: View {
     let state: NotchActivityState
     @Environment(\.islandScale) private var k
     var body: some View {
-        // Bars are always shown. When the pager and refresh leave too little room the bars get shorter and the 5-hour
-        // countdown rounds to hours (down to a 10pt stub, which still reads as a meter); only then do the limits move
-        // onto their own line above the pager.
+        // Bars are always shown. When the pager leaves too little room the bars get shorter (down to a short 22pt
+        // stub, which still reads as a meter), and only then do the limits move onto their own line above the pager.
+        // One line, always: the pager never drops below the limits. When it gets tight the bars and then the type
+        // shrink, but the bars stay visible.
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                limits(bar: 40)
-                Spacer(minLength: 0)
-                trailing
-            }
-            HStack(spacing: 10) {
-                limits(bar: 24)
-                Spacer(minLength: 0)
-                trailing
-            }
-            HStack(spacing: 10) {
-                limits(bar: 24, hm: false)
-                Spacer(minLength: 0)
-                trailing
-            }
-            HStack(spacing: 6) {
-                limits(bar: 10, spacing: 8, hm: false)
-                Spacer(minLength: 0)
-                trailing
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                limits(bar: 40)
-                HStack {
-                    Spacer(minLength: 0)
-                    trailing
-                }
-            }
+            row(bar: 40, size: 11, icon: true)
+            row(bar: 28, size: 11, icon: true)
+            row(bar: 30, size: 11, icon: false)
+            row(bar: 22, size: 10.5, icon: false)
+            row(bar: 16, size: 10, icon: false)
         }
         .padding(.horizontal, 4)
     }
 
-    /// The pager (when there is more than one page), then the refresh icon at the very end of the row: it re-reads
-    /// both limits.
-    private var trailing: some View {
+    private func row(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
         HStack(spacing: 8) {
-            if state.pages > 1 { Pager(state: state).fixedSize() }
-            if state.fiveHour != nil || state.weekly != nil {
-                Button(intent: RefreshQuotaIntent()) {
-                    Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.8)).frame(width: 24 * k, height: 24 * k)
-                        .background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
+            limits(bar: bar, size: size, icon: icon)
+            refresh
+            Spacer(minLength: 0)
+            pager
         }
     }
 
-    /// `hm`: the 5-hour countdown in hours and minutes ("2h 4m", like Claude Desktop); tight rows round it ("2h").
-    private func limits(bar: CGFloat, spacing: CGFloat = 12, hm: Bool = true) -> some View {
-        HStack(spacing: spacing) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, hm: hm) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar) }
+    /// Sits right after the limits it refreshes, not after the pager.
+    private var refresh: some View {
+        Button(intent: RefreshQuotaIntent()) {
+            Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
+                .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    @ViewBuilder private var pager: some View {
+        if state.pages > 1 { Pager(state: state).fixedSize() }
+    }
+
+    private func limits(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
+        HStack(spacing: 9) {
+            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, hm: true) }
+            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon) }
         }
     }
 
-    /// "5h ▬▬ 44% ⌛2h": the window, a bar, the percentage, and how long until it resets in one short unit.
-    private func limit(_ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, hm: Bool = false) -> some View {
-        HStack(spacing: 5) {
+    /// "5h ▬▬ 44% 🕒2h": the window, a bar, the percentage, and how long until it resets in one short unit.
+    private func limit(
+        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false
+    )
+        -> some View
+    {
+        HStack(spacing: 4) {
             Text(label).foregroundStyle(Island.secondary)
-            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar * k, height: 5 * k)
+            Capsule().fill(Color.white.opacity(0.16)).frame(width: bar * k, height: 7 * k)
                 .overlay(alignment: .leading) {
-                    Capsule().fill(Island.quota(f)).frame(width: max(5 * k, bar * k * min(1, f)), height: 5 * k)
+                    Capsule().fill(Island.quota(f)).frame(width: max(7 * k, bar * k * min(1, f)), height: 7 * k)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
-                HStack(spacing: 1) {
-                    Image(systemName: "hourglass").sfont(size: 8, weight: .bold)
+                HStack(spacing: 2) {
+                    if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
                     Text(left)
                 }
                 .foregroundStyle(Island.tertiary)
             }
         }
         .monospacedDigit()
-        .sfont(size: 11, weight: .semibold)
+        .sfont(size: size, weight: .semibold)
         .fixedSize()
     }
 }
@@ -604,7 +648,7 @@ struct Pager: View {
     let state: NotchActivityState
     @Environment(\.islandScale) private var k
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 5) {
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
             HStack(spacing: 4) {
                 ForEach(0..<min(state.pages, 8), id: \.self) { i in
@@ -621,7 +665,7 @@ struct Pager: View {
 
     private func arrow(_ symbol: String) -> some View {
         Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 24 * k, height: 24 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
     }
 }
 
@@ -674,6 +718,18 @@ struct IslandBadges: View {
     }
 }
 
+/// The gear at the island's top right: opens NotchBot's settings without going through the menu bar.
+struct SettingsGear: View {
+    var body: some View {
+        Button(intent: OpenSettingsIntent()) {
+            Image(systemName: "gearshape.fill").sfont(size: 11, weight: .semibold).foregroundStyle(.white.opacity(0.85))
+                .frame(width: 24, height: 24).background(Circle().fill(Color.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Everything under the header.
 struct IslandBody: View {
     let state: NotchActivityState
@@ -718,7 +774,7 @@ struct IslandIdle: View {
                     .lineLimit(1).padding(.horizontal, 4)
             } else {
                 HStack(spacing: 12) {
-                    Artwork(size: 34 * k)
+                    Artwork(size: 32 * k)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("All quiet").sfont(size: 16, weight: .semibold).foregroundStyle(.white)
                         Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)
@@ -729,7 +785,7 @@ struct IslandIdle: View {
                 .padding(.horizontal, 4)
             }
             if state.fiveHour != nil || state.weekly != nil {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .bottom, spacing: 16) {
                     if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset, hm: true) }
                     if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
                 }
@@ -743,9 +799,10 @@ struct IslandIdle: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
-                    .monospacedDigit()
+                    .monospacedDigit().lineLimit(1).fixedSize()
             }
             Capsule().fill(Color.white.opacity(0.16)).frame(height: 6 * k)
                 .overlay(alignment: .leading) {
@@ -769,10 +826,14 @@ struct IslandIdle: View {
 /// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: 17) }
+    var body: some View { Artwork(size: Island.compactIcon, badge: state.reviews) }
 }
 
 struct IslandCompactTrailing: View {
     let state: NotchActivityState
-    var body: some View { AgentWave(state: state, height: 15) }
+    var body: some View {
+        // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
+        let h = Island.compactIcon * Island.compactWaveRatio
+        AgentWave(state: state, height: h).frame(width: 30, height: h)
+    }
 }

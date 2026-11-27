@@ -1,14 +1,14 @@
 import ActivityKit
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 import WidgetKit
 
-@main struct ClaudeNotchWidgetBundle: WidgetBundle {
-    var body: some Widget { ClaudeNotchActivity() }
+@main struct NotchbotWidgetBundle: WidgetBundle {
+    var body: some Widget { NotchbotActivity() }
 }
 
 /// The island itself. The views are in Shared/IslandViews.swift so the app can snapshot them.
-struct ClaudeNotchActivity: Widget {
+struct NotchbotActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NotchAttributes.self) { ctx in
             IslandExpanded(state: ctx.state).islandScale(ctx.state.scale).padding(16).opacity(ctx.isStale ? 0.6 : 1)
@@ -26,15 +26,24 @@ struct ClaudeNotchActivity: Widget {
                         .opacity(ctx.isStale ? 0.6 : 1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if s.sessions > 0 {
-                        IslandBadges(state: s).islandScale(s.scale)
-                            .padding(.trailing, Island.inset).padding(.top, Island.inset)
-                            .opacity(ctx.isStale ? 0.6 : 1)
+                    HStack(spacing: 8) {
+                        if s.sessions > 0 { IslandBadges(state: s) }
+                        SettingsGear()
                     }
+                    .islandScale(s.scale)
+                    .padding(.trailing, Island.inset).padding(.top, Island.inset)
+                    .opacity(ctx.isStale ? 0.6 : 1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Group {
-                        if s.sessions == 0 { IslandIdle(state: s, header: false) } else { IslandBody(state: s) }
+                        if s.sessions == 0 {
+                            // Short content makes the system round the island into a full pill. A minimum height
+                            // keeps the usual rounded-rectangle shape even with no limits row to fill it.
+                            IslandIdle(state: s, header: false)
+                                .frame(maxWidth: .infinity, minHeight: Island.idleMinHeight * s.scale, alignment: .topLeading)
+                        } else {
+                            IslandBody(state: s)
+                        }
                     }
                     .islandScale(s.scale)
                     .padding(.horizontal, Island.inset)
@@ -47,7 +56,7 @@ struct ClaudeNotchActivity: Widget {
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: 17)
+                Artwork(size: Island.compactIcon, badge: s.reviews)
             }
             .keylineTint(Island.coral)
         }

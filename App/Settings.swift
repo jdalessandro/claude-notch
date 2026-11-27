@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable, Identifiable {
@@ -46,7 +46,7 @@ final class SettingsWindowController {
     func show(model: AppModel) {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model, settings: model.settings)))
-            w.title = "Claude Notch Settings"
+            w.title = "NotchBot Settings"
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.setContentSize(NSSize(width: 540, height: 520))
             w.isReleasedWhenClosed = false
@@ -96,6 +96,14 @@ struct GeneralTab: View {
             }
 
             Section {
+                Toggle("Show a review badge on the logo", isOn: $settings.prefs.showReviewBadge)
+            } header: {
+                Text("Compact island")
+            } footer: {
+                hint("A number on the robot counts finished sessions waiting for you to review.")
+            }
+
+            Section {
                 Toggle("Raise the island when something needs you", isOn: $settings.prefs.autoExpandOnEvents)
                 Picker("Forget idle sessions after", selection: $settings.prefs.sessionRetention) {
                     Text("1 hour").tag(Preferences.SessionRetention.oneHour)
@@ -120,20 +128,21 @@ struct IslandSizePicker: View {
     @Binding var size: Preferences.IslandSize
     private var steps: Double { Double(Preferences.IslandSize.allCases.count - 1) }
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(spacing: 4) {
+            HStack(alignment: .lastTextBaseline) {
                 Text("A").font(.system(size: 11))
-                Slider(
-                    value: Binding(
-                        get: { Double(size.rawValue) },
-                        set: { size = Preferences.IslandSize(rawValue: Int($0.rounded())) ?? .standard }),
-                    in: 0...steps, step: 1)
+                Spacer()
                 Text("A").font(.system(size: 19))
             }
+            Slider(
+                value: Binding(
+                    get: { Double(size.rawValue) },
+                    set: { size = Preferences.IslandSize(rawValue: Int($0.rounded())) ?? .standard }),
+                in: 0...steps, step: 1
+            ) { EmptyView() }
+            .labelsHidden().frame(maxWidth: .infinity)
             HStack {
                 Text("Smaller")
-                Spacer()
-                Text(size.title).fontWeight(.semibold).foregroundStyle(.primary)
                 Spacer()
                 Text("Larger")
             }
@@ -295,6 +304,8 @@ struct AdvancedTab: View {
 
             Section {
                 LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
+                Text("NotchBot is an unofficial companion for Claude Code. It is not affiliated with or endorsed by Anthropic.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

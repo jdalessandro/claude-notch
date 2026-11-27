@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import Observation
 import UserNotifications
 
@@ -45,7 +45,6 @@ final class AppModel {
     var eventLog: [String] = []
     /// The Live Activity that is the island.
     let island = ActivityHost()
-    var onShowWindow: (() -> Void)?
 
     // MARK: plan, quota & usage
     var billing = PlanDetector.detectForCurrentUser()
@@ -126,7 +125,7 @@ final class AppModel {
         } catch {
             lastError =
                 (error as? POSIXError)?.code == .EADDRINUSE
-                ? "Claude Notch is already running." : "Socket: \(error.localizedDescription)"
+                ? "NotchBot is already running." : "Socket: \(error.localizedDescription)"
         }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -228,7 +227,7 @@ final class AppModel {
     }
 
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
-        let reason = decision == .deny ? "Denied from Claude Notch" : nil
+        let reason = decision == .deny ? "Denied from NotchBot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
             store.resolvePermission(sessionId, allowed: decision == .allow)
         } else {
@@ -297,18 +296,6 @@ final class AppModel {
 
     // MARK: Live Activity
 
-    /// (Re)starts the island. Starting needs the foreground, so bring the app forward first.
-    func showIsland() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
-        Task { @MainActor in
-            await island.resetExisting()  // always a fresh activity: the old one may be "active" but not on screen
-            try? await Task.sleep(for: .milliseconds(400))
-            reconcile()
-            if island.isLive { try? await Task.sleep(for: .seconds(2)); NSApp.setActivationPolicy(.accessory) } else { onShowWindow?() }
-        }
-    }
-
     private var seenAttention: Set<String> = []
     /// The island's session page; the reducer wraps it. Reset to the first (most urgent) page when something new
     /// needs the user.
@@ -361,6 +348,7 @@ final class AppModel {
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
+        if !prefs.showReviewBadge { state.reviews = 0 }
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -371,7 +359,10 @@ final class AppModel {
         holdPage()  // the user is using the island: stop turning pages under them
         switch action {
         case .refreshQuota:
-            Task { await refreshQuota() }
+            refreshUsageNow()
+            return
+        case .openSettings:
+            onOpenSettings?()
             return
         case .nextPage, .previousPage:
             activityTrace("intent \(action)")
@@ -388,7 +379,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage, .refreshQuota: break
+        case .nextPage, .previousPage, .refreshQuota, .openSettings: break
         }
     }
 
@@ -398,14 +389,14 @@ final class AppModel {
     private func stableHookPath() throws -> String {
         let dest = Paths.supportDir.appendingPathComponent("bin", isDirectory: true)
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
-        let target = dest.appendingPathComponent("claude-notch-hook")
-        let sibling = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("claude-notch-hook")
+        let target = dest.appendingPathComponent("notchbot-hook")
+        let sibling = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("notchbot-hook")
         guard FileManager.default.fileExists(atPath: sibling.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "claude-notch-hook not found next to the app"])
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "notchbot-hook not found next to the app"])
         }
         // Copy beside the target, then swap in atomically: a hook firing mid-update must never find a missing or
         // half-copied binary. Also drop the quarantine flag so the copied helper isn't blocked by Gatekeeper.
-        let tmp = dest.appendingPathComponent(".claude-notch-hook.\(UUID().uuidString).tmp")
+        let tmp = dest.appendingPathComponent(".notchbot-hook.\(UUID().uuidString).tmp")
         try FileManager.default.copyItem(at: sibling, to: tmp)
         removexattr(tmp.path, "com.apple.quarantine", 0)
         if FileManager.default.fileExists(atPath: target.path) {
@@ -421,9 +412,9 @@ final class AppModel {
     /// whenever hooks or the status line are installed. Only our own helper file is touched, never the user's config.
     private func refreshInstalledForwarder() {
         guard hooksInstalled || statusLineInstalled else { return }
-        let target = Paths.supportDir.appendingPathComponent("bin/claude-notch-hook")
+        let target = Paths.supportDir.appendingPathComponent("bin/notchbot-hook")
         guard let exe = Bundle.main.executableURL else { return }
-        let bundled = exe.deletingLastPathComponent().appendingPathComponent("claude-notch-hook")
+        let bundled = exe.deletingLastPathComponent().appendingPathComponent("notchbot-hook")
         guard FileManager.default.fileExists(atPath: target.path), FileManager.default.fileExists(atPath: bundled.path),
             !FileManager.default.contentsEqual(atPath: bundled.path, andPath: target.path)
         else { return }
@@ -469,7 +460,7 @@ final class AppModel {
         let p = env.payload
         eventLog.append("\(p.hookEventName ?? "?") \(p.notificationType ?? "") \(p.toolName ?? "") \(p.sessionId?.prefix(6) ?? "")")
         if eventLog.count > 200 { eventLog.removeFirst(50) }
-        if prefs.logRawEvents || ProcessInfo.processInfo.environment["CLAUDE_NOTCH_LOG"] != nil,
+        if prefs.logRawEvents || ProcessInfo.processInfo.environment["NOTCHBOT_LOG"] != nil,
             let d = try? env.encodedLine()
         {
             let url = Paths.supportDir.appendingPathComponent("events.jsonl")

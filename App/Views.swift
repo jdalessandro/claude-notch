@@ -1,4 +1,4 @@
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
 let coral = Color(red: 0.85, green: 0.47, blue: 0.34)
@@ -343,7 +343,7 @@ struct SessionCard: View {
 
     private var activityLine: some View {
         HStack(spacing: 6) {
-            Image(systemName: "sparkle").font(.system(size: 9)).foregroundStyle(coral)
+            RobotView().frame(width: 16, height: 16)
             Text(s.activity).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(coral.opacity(0.95)).lineLimit(1)
         }
     }
@@ -629,56 +629,10 @@ struct IslandMenu: View {
             Button("Settings…") { model.onOpenSettings?() }.keyboardShortcut(",")
             Button("Mark all reviewed") { model.dismissAllReviewed() }
             Divider()
-            Button("Quit Claude Notch") { NSApplication.shared.terminate(nil) }
+            Button("Quit NotchBot") { NSApplication.shared.terminate(nil) }
         } label: {
             Image(systemName: "ellipsis.circle").font(.system(size: 14))
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(.secondary)
-    }
-}
-
-// MARK: - Detail window (the full list the island has no room for)
-
-struct DetailView: View {
-    @Bindable var model: AppModel
-    var body: some View {
-        let sessions = model.store.active
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkle").foregroundStyle(coral)
-                Text(NotchActivityState.make(sessions: sessions, quota: nil).headline).font(.system(size: 14, weight: .semibold))
-                if model.runningSubagentTotal > 0 {
-                    Label("\(model.runningSubagentTotal)", systemImage: "arrow.triangle.branch").font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !model.island.isLive {
-                    ChipButton(title: "Show island", tint: coral, filled: false) { model.showIsland() }
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            Divider().opacity(0.3)
-            ScrollView {
-                if sessions.isEmpty {
-                    VStack(spacing: 4) {
-                        Text("No active Claude sessions").font(.system(size: 13, weight: .medium))
-                        Text(
-                            model.hooksInstalled
-                                ? "Start `claude` in a terminal — it will appear here."
-                                : "Install hooks below to start tracking sessions."
-                        )
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity).padding(.top, 60)
-                } else {
-                    SessionList(model: model).padding(Metrics.inset)
-                }
-            }
-            Divider().opacity(0.3)
-            FooterView(model: model).padding(.horizontal, 16).padding(.vertical, 10)
-        }
-        .frame(minWidth: 380, minHeight: 360)
-        .background(Color.black)
-        .environment(\.colorScheme, .dark)
-        .foregroundStyle(.white)
     }
 }

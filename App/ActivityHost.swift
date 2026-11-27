@@ -1,9 +1,9 @@
 import ActivityKit
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import os
 
-private let log = Logger(subsystem: "dev.claudenotch", category: "activity")
+private let log = Logger(subsystem: "dev.notchbot", category: "activity")
 
 /// Appends a line to `activity.log` in Application Support (Unified Logging is not always readable from a terminal),
 /// so the island's lifecycle can be verified. Capped, and contains no prompt or command text.
@@ -102,10 +102,10 @@ final class ActivityHost {
     @discardableResult
     func ensureStarted(with state: NotchActivityState) -> Bool {
         if activity != nil { return true }
-        guard enabled else { lastError = "Live Activities are turned off for Claude Notch in System Settings."; return false }
+        guard enabled else { lastError = "Live Activities are turned off for NotchBot in System Settings."; return false }
         do {
             activity = try Activity.request(
-                attributes: NotchAttributes(title: "Claude Notch"), content: content(state), pushType: nil,
+                attributes: NotchAttributes(title: "NotchBot"), content: content(state), pushType: nil,
                 style: .standard)
             last = state
             lastError = nil

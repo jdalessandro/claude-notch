@@ -1,26 +1,24 @@
 # Architecture
 
 ```
-claude (CLI / desktop)                              ClaudeNotch.app
+claude (CLI / desktop)                              Notchbot.app
    | hook event (stdin JSON)                          |- NotchServer     Unix socket (0600), ordered delivery
    v                                                  |- SessionStore    pure reducer: events -> sessions
-claude-notch-hook --- notch.sock --------------->     |- TranscriptTailer  per-session usage / title / context
-   ^  PermissionRequest: blocks until answered        |- UsageAPI          plan limits (Claude Code's OAuth login)
-   '------------- Allow / Deny <---------------       |- ModelCatalog      context-window sizes from Claude's cache
-                                                      `- ActivityHost      Live Activity (widget extension draws it)
-claude status line (optional) --- claude-notch-hook --statusline -->  exact context window, rate limits
+notchbot-hook --- notch.sock --------------->     |- TranscriptTailer  per-session usage / title / cost
+   ^  PermissionRequest: blocks until answered        |- UsageAggregator   quota windows from all transcripts
+   '------------- Allow / Deny <---------------       `- ActivityHost      Live Activity (widget extension draws it)
+claude status line --- notchbot-hook --statusline -->  QuotaState (rate limits, exact context window)
 ```
 
 ## Modules
 
-- **ClaudeNotchCore** has no UI dependencies. `SessionStore.apply(_:)` is a pure function of (state, event), so the whole
+- **NotchbotCore** has no UI dependencies. `SessionStore.apply(_:)` is a pure function of (state, event), so the whole
   state machine is unit-tested without a display. IPC, the settings-file installer, transcript parsing and
   preferences are also here.
-- **claude-notch-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
+- **notchbot-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
   `--interactive`) waits for a reply, which it prints in Claude Code's decision schema.
-- **ClaudeNotch** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
-  (`@Observable`) is the single source of truth; every change ends in `reconcile()`, which rebuilds the island's
-  state and pushes it to the Live Activity. The menu-bar item and the Settings window are the only other UI.
+- **Notchbot** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
+  (`@Observable`) is the single source of truth; the Live Activity and the *Sessions* window both render from it.
 
 ## Event model
 
@@ -48,7 +46,7 @@ user answers.
 - Per-session usage comes from the session transcript (`message.usage`, de-duplicated by `requestId` because one API
   call is written as several lines). Context size is the latest main-thread prompt size; subagent traffic is excluded.
 - Cost prefers Claude Code's own `cost-state.totalCostUSD`; otherwise a price table estimate. Pricing overrides go in
-  `~/Library/Application Support/ClaudeNotch/pricing.json`, shaped like `PriceTable`:
+  `~/Library/Application Support/Notchbot/pricing.json`, shaped like `PriceTable`:
   `{"order": ["opus"], "families": {"opus": {"input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75}}, "fallback": {...}}`.
 - `UsageAggregator` sums every transcript touched in the last 8 days incrementally (offset + partial-line carry) into
   rolling 5-hour / today / 7-day token totals. "Tokens" means input + output + cache writes; cache reads are excluded
@@ -71,27 +69,9 @@ user answers.
 
 The island is a Live Activity drawn by the system, so there is no window geometry, hover handling or cutout math in
 the app. `NotchActivityState.make` (core, tested) compacts the sessions, the most urgent request and the quota into a
-small `Codable` state under `NotchActivityState.byteBudget` (ActivityKit caps the payload): a headline with
-needs-you / working / subagent counts, an optional featured `Prompt` (permission or question), up to `maxRows`
-session `Row`s for the current page, the two plan limits with their reset dates, and the island size's `scale`.
-
-- **Presentations** (`Widget/NotchLiveWidget.swift`): compact leading is the logo, compact trailing the waveform,
-  minimal the logo. Expanded puts `IslandHeadline` in the leading region and `IslandBadges` in the trailing region,
-  up beside the cutout, and the featured card, session cards and footer in the bottom region, with the same
-  `Island.inset` on every outer edge.
-- **Waveform.** The system renders a snapshot of the view, so repeating animations never run. `ActivityHost` sends a
-  `pulse` beat about once a second while agents run; each beat picks new bar heights, and the island animates the
-  change.
-- **Paging.** The island can't scroll. `page` / `pages` come from the reducer; `PageIntent` turns pages, `AppModel`
-  turns them every 6 s on its own, holds the page for 20 s after any tap, and jumps to the first page when something
-  new needs the user. The island size picks `maxRows` (3, or 2 at the two largest sizes; 1 beside a featured card).
-- **Alerts.** `ActivityHost` starts the activity while the app is in the foreground (ActivityKit requires it), then
-  pushes updates, with an alert (which expands the island) when something new needs the user, and a heartbeat so the
-  island is not shown as stale.
-- **Buttons** are App Intents (`Shared/Intents.swift`) that run in the app process. Allow / Deny resolve the exact
-  pending request through `PermissionBroker`, so a stale or repeated tap is ignored. `OpenSessionIntent` deep-links
-  to the conversation in Claude Desktop when `DesktopSessionLink` finds it, otherwise it brings forward the terminal
-  the session runs in.
-- **Snapshots.** The views live in `Shared/IslandViews.swift`, compiled into both the widget extension and the app.
-  `ClaudeNotch --snapshot <dir>` (`App/Snapshots.swift`) renders them offscreen from the demo data to PNGs without
-  starting a Live Activity; `make snapshots` writes `docs/screens/`.
+small `Codable` state under `NotchActivityState.byteBudget`, which ActivityKit enforces. `ActivityHost` starts the
+activity while the app is in the foreground, then pushes updates (with an alert when something new needs you) and a
+heartbeat so the island is not shown as stale. The views live in `Shared/IslandViews.swift`, compiled into both the
+widget extension and the app: the widget renders them in the island, and the app renders them offscreen for
+`--snapshot`. Buttons are App Intents (`Shared/Intents.swift`) that run in the app process and resolve the exact
+pending request through `PermissionBroker`; a stale or repeated tap is ignored.
