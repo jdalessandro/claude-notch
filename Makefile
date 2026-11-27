@@ -1,4 +1,4 @@
-.PHONY: help build test lint format bundle install demo snapshots release prerelease clean
+.PHONY: help build test lint format bundle install demo snapshots release prerelease ship clean
 
 help: ## List targets
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -32,6 +32,9 @@ snapshots: bundle ## Re-render docs/screens/*.png from the demo data (offscreen)
 
 release: ## Signed, notarized stable release of VERSION: GitHub Release + Homebrew cask (see docs/RELEASING.md)
 	./scripts/release.sh
+
+ship: ## Bump the version, merge it, then release end to end: make ship BUMP=patch|minor|major|X.Y.Z|current
+	@./scripts/ship.sh $(or $(BUMP),$(error set BUMP=patch|minor|major|X.Y.Z|current))
 
 prerelease: ## Signed, notarized prerelease build of HEAD (tag build-N), no cask update
 	./scripts/release.sh --prerelease

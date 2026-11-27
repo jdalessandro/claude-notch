@@ -13,6 +13,19 @@ Cut a stable release: bump `VERSION`, add a `## [X.Y.Z]` section to `CHANGELOG.m
 The script checks everything up front (certificate, notary profile, `gh` login, clean and pushed tree, tag and changelog)
 before the slow part, so a mistake fails in seconds.
 
+## One command: `make ship`
+
+```bash
+make ship BUMP=minor     # patch | minor | major | X.Y.Z | current
+scripts/ship.sh minor --plan   # show what would happen, change nothing
+```
+
+Add your notes under `## [Unreleased]` (or a `## [X.Y.Z] - Unreleased` heading) in `CHANGELOG.md` first. `ship` then:
+bumps `VERSION`, dates that changelog section, opens and merges the bump PR (admin bypass, since `main` is protected),
+runs `scripts/release.sh` (test, build, sign, notarize, dmg, GitHub Release, Homebrew cask) and finally checks every
+channel: the dmg downloads and matches its checksum, `releases/latest` points at the new tag (what the curl installer
+uses), and the tap's cask carries the new version and checksum. `BUMP=current` releases the version already in `VERSION`.
+
 ## One-time setup
 
 1. **Developer ID certificate.** developer.apple.com ▸ Certificates ▸ *Developer ID Application* (Account Holder only). Create
