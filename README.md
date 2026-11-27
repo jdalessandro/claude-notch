@@ -11,7 +11,7 @@ See every running agent at a glance, get told when something finishes or needs y
 switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
 <p align="center">
-  <img src="docs/screens/expanded-question.png" alt="Expanded island: Claude's question as a card, another session's permission request with Allow/Deny, and plan limits" width="380">
+  <img src="docs/screens/expanded-question.png" alt="Expanded island: Claude's question as a card with numbered choices to tap, a hint that other sessions wait behind it, the pager, and plan limits" width="380">
 </p>
 
 > NotchBot is an unofficial, independent community project. It is not made by, affiliated with, or endorsed by
