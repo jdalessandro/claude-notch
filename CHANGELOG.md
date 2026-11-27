@@ -4,6 +4,10 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [0.2.0] - Unreleased
 
+### Docs
+- README rewritten for users (install, first run, features, settings); the full reference and troubleshooting moved to
+  `docs/GUIDE.md`; build-from-source steps moved to CONTRIBUTING; fresh screenshots.
+
 ### Changed
 - **Branding**: the name is styled **NotchBot** in the UI and docs (identifiers `Notchbot.app`, `notchbot-hook`,
   `dev.notchbot.app` keep the lowercase form), and the robot logo sits at the top of the README.
