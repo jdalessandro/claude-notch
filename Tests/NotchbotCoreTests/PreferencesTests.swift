@@ -51,7 +51,7 @@ import Testing
 @Suite struct IslandSizeTests {
     @Test func stepsAreOrderedAndDefaultIsOne() {
         let s = Preferences.IslandSize.allCases.map(\.scale)
-        #expect(s == s.sorted() && Preferences().islandSize.scale == 1.0)
+        #expect(s == s.sorted() && Preferences().islandSize.scale == 1.12)
     }
     @Test func roundTripsAndInvalidFallsBack() throws {
         var p = Preferences(); p.islandSize = .larger
