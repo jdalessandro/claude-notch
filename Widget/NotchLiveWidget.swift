@@ -47,7 +47,7 @@ struct NotchbotActivity: Widget {
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: 16)
+                Artwork(size: Island.compactIcon)
             }
             .keylineTint(Island.coral)
         }
