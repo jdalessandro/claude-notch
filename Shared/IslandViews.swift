@@ -553,7 +553,7 @@ struct Footer: View {
 
     /// Sits right after the limits it refreshes, not after the pager.
     private var refresh: some View {
-        Button(intent: RefreshUsageIntent()) {
+        Button(intent: RefreshQuotaIntent()) {
             Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
                 .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
                 .contentShape(Circle())

@@ -235,16 +235,16 @@ struct UsageModeToggle: View {
 
 struct QuotaRow: View {
     let window: QuotaWindow
+    private var resets: String {
+        window.resetsAt.map { " · Resets \(Fmt.until($0, fiveHour: window.id == "five_hour"))" } ?? ""
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline) {
                 Text(window.title).font(.system(size: 13, weight: .medium))
                 Spacer()
-                Text(
-                    "\(Int(window.usedPercent.rounded()))%"
-                        + (window.resetsAt.map { " · Resets \(Fmt.until($0, fiveHour: window.id == "five_hour"))" } ?? "")
-                )
-                .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                Text("\(Int(window.usedPercent.rounded()))%" + resets)
+                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
             }
             GeometryReader { g in
                 ZStack(alignment: .leading) {

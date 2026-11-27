@@ -5,7 +5,7 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshUsage }
+    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshQuota }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -60,12 +60,12 @@ struct PageIntent: LiveActivityIntent {
     }
 }
 
-/// Re-reads the plan limits now instead of waiting for the next poll.
-struct RefreshUsageIntent: LiveActivityIntent {
-    static let title: LocalizedStringResource = "Refresh usage"
+/// Re-reads the plan limits from Anthropic right now (the footer's refresh icon).
+struct RefreshQuotaIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Refresh plan limits"
     init() {}
     @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.refreshUsage, "", "")
+        IntentBridge.handler?(.refreshQuota, "", "")
         return .result()
     }
 }
