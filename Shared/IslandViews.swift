@@ -710,6 +710,18 @@ struct IslandBadges: View {
     }
 }
 
+/// The gear at the island's top right: opens NotchBot's settings without going through the menu bar.
+struct SettingsGear: View {
+    var body: some View {
+        Button(intent: OpenSettingsIntent()) {
+            Image(systemName: "gearshape.fill").sfont(size: 11, weight: .semibold).foregroundStyle(.white.opacity(0.85))
+                .frame(width: 24, height: 24).background(Circle().fill(Color.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Everything under the header.
 struct IslandBody: View {
     let state: NotchActivityState

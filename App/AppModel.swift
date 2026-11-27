@@ -361,6 +361,9 @@ final class AppModel {
         case .refreshQuota:
             refreshUsageNow()
             return
+        case .openSettings:
+            onOpenSettings?()
+            return
         case .nextPage, .previousPage:
             activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
@@ -376,7 +379,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage, .refreshQuota: break
+        case .nextPage, .previousPage, .refreshQuota, .openSettings: break
         }
     }
 

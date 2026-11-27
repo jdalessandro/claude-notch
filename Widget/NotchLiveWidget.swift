@@ -26,11 +26,13 @@ struct NotchbotActivity: Widget {
                         .opacity(ctx.isStale ? 0.6 : 1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if s.sessions > 0 {
-                        IslandBadges(state: s).islandScale(s.scale)
-                            .padding(.trailing, Island.inset).padding(.top, Island.inset)
-                            .opacity(ctx.isStale ? 0.6 : 1)
+                    HStack(spacing: 8) {
+                        if s.sessions > 0 { IslandBadges(state: s) }
+                        SettingsGear()
                     }
+                    .islandScale(s.scale)
+                    .padding(.trailing, Island.inset).padding(.top, Island.inset)
+                    .opacity(ctx.isStale ? 0.6 : 1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Group {
