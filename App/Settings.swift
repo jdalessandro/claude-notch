@@ -120,21 +120,19 @@ struct IslandSizePicker: View {
     @Binding var size: Preferences.IslandSize
     private var steps: Double { Double(Preferences.IslandSize.allCases.count - 1) }
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("A").font(.system(size: 11))
+        Grid(horizontalSpacing: 12, verticalSpacing: 6) {
+            GridRow {
+                Text("A").font(.system(size: 11)).gridColumnAlignment(.leading)
                 Slider(
                     value: Binding(
                         get: { Double(size.rawValue) },
                         set: { size = Preferences.IslandSize(rawValue: Int($0.rounded())) ?? .standard }),
                     in: 0...steps, step: 1)
-                Text("A").font(.system(size: 19))
+                Text("A").font(.system(size: 19)).gridColumnAlignment(.trailing)
             }
-            HStack {
+            GridRow {
                 Text("Smaller")
-                Spacer()
                 Text(size.title).fontWeight(.semibold).foregroundStyle(.primary)
-                Spacer()
                 Text("Larger")
             }
             .font(.caption).foregroundStyle(.secondary)
