@@ -144,4 +144,126 @@ import Testing
         let back = try JSONDecoder().decode(NotchActivityState.self, from: JSONEncoder().encode(st))
         #expect(back == st)
     }
+
+    func approval(_ sid: String) -> (inout SessionStore) -> Void {
+        { st in
+            _ = st.apply(ev("UserPromptSubmit", sid: sid) { $0.prompt = "go" })
+            _ = st.apply(
+                ev("PermissionRequest", sid: sid, expectsReply: true) {
+                    $0.toolName = "Bash"; $0.toolInput = .object(["command": .string("ls")])
+                })
+        }
+    }
+
+    @Test func limitsNoteAndHooksFlagPassThroughAndStayOutOfTheWayByDefault() throws {
+        let plain = NotchActivityState.make(sessions: [], quota: nil)
+        #expect(plain.limitsNote == nil && !plain.hooksMissing && plain.limitsUnknown)
+        let st = NotchActivityState.make(sessions: [], quota: nil, limitsNote: .failed, hooksInstalled: false)
+        #expect(st.limitsNote == .failed && st.hooksMissing)
+        let back = try JSONDecoder().decode(NotchActivityState.self, from: JSONEncoder().encode(st))
+        #expect(back == st)
+        // nil notes are omitted from the payload.
+        #expect(!String(decoding: try JSONEncoder().encode(plain), as: UTF8.self).contains("limitsNote"))
+    }
+
+    @Test func newFieldsKeepTheBudget() {
+        let huge = String(repeating: "x", count: 5_000)
+        let s = store { st in
+            for i in 0..<10 {
+                _ = st.apply(ev("UserPromptSubmit", sid: "s\(i)") { $0.prompt = huge })
+                approval("s\(i)")(&st)
+            }
+        }
+        let st = NotchActivityState.make(sessions: s.active, quota: nil, limitsNote: .refreshing, hooksInstalled: false)
+        #expect(st.encodedSize < NotchActivityState.byteBudget)
+    }
+
+    /// A session with `n` subagents whose names and tool details are far longer than the island can show.
+    func sessionWithSubagents(_ n: Int, asking: Bool = false) -> SessionStore {
+        let huge = String(repeating: "x", count: 500)
+        return store { st in
+            _ = st.apply(ev("UserPromptSubmit", sid: "tree") { $0.prompt = huge })
+            for i in 0..<n {
+                _ = st.apply(
+                    ev("PreToolUse", sid: "tree") {
+                        $0.toolName = "Task"; $0.toolInput = .object(["description": .string(huge)])
+                    })
+                _ = st.apply(
+                    ev("SubagentStart", sid: "tree") {
+                        $0.agentId = "a\(i)"; $0.agentType = String(repeating: "T", count: 80)
+                    })
+                _ = st.apply(
+                    ev("PreToolUse", sid: "tree") {
+                        $0.agentId = "a\(i)"; $0.agentType = "Explore"; $0.toolName = String(repeating: "G", count: 90)
+                        $0.toolInput = .object(["pattern": .string(huge)])
+                    })
+            }
+            if asking {
+                _ = st.apply(
+                    ev("PermissionRequest", sid: "tree", expectsReply: true) {
+                        $0.agentId = "a\(n - 1)"; $0.agentType = "Explore"; $0.toolName = "Bash"
+                        $0.toolInput = .object(["command": .string(huge)])
+                    })
+            }
+        }
+    }
+
+    @Test func focusedTreeIsCappedAndStaysWithinTheByteBudget() {
+        for asking in [false, true] {
+            let s = sessionWithSubagents(40, asking: asking)
+            let st = NotchActivityState.make(sessions: s.active, quota: nil, focus: "tree")
+            let f = try! #require(st.focus)
+            let cap = asking ? NotchActivityState.maxTreeLinesWithPrompt : NotchActivityState.maxTreeLines
+            #expect(f.lines.count == cap && f.lines.first?.name == "Main")
+            #expect(f.more == 40 - (cap - 1) && f.total == 40 && f.running == 40)
+            #expect(f.lines.allSatisfy { $0.name.count <= 16 && $0.detail.count <= 44 })
+            #expect(st.rows.isEmpty, "the tree replaces the session rows")
+            #expect(st.encodedSize < NotchActivityState.byteBudget)
+        }
+    }
+
+    @Test func aSubagentWaitingOnYouLeadsTheTreeAndIsAmber() {
+        let s = sessionWithSubagents(10, asking: true)
+        let f = try! #require(NotchActivityState.make(sessions: s.active, quota: nil, focus: "tree").focus)
+        #expect(f.lines[0].state == .running, "the main agent isn't the one waiting")
+        #expect(f.lines[1].state == .waiting && f.lines[1].detail.hasPrefix("Needs approval"))
+        #expect(f.lines.dropFirst(2).allSatisfy { $0.state == .running })
+    }
+
+    @Test func treeListsRunningBeforeDoneAndLabelsEachLine() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        let s = store { st in
+            _ = st.apply(ev("UserPromptSubmit", sid: "t", t: 0) { $0.prompt = "go" })
+            _ = st.apply(
+                ev("SubagentStart", sid: "t", t: 1) {
+                    $0.agentId = "d"; $0.agentType = "Plan"
+                })
+            _ = st.apply(
+                ev("SubagentStop", sid: "t", t: 5) {
+                    $0.agentId = "d"; $0.lastAssistantMessage = "Planned"
+                })
+            _ = st.apply(
+                ev("SubagentStart", sid: "t", t: 6) {
+                    $0.agentId = "r"; $0.agentType = "Explore"
+                })
+            _ = st.apply(
+                ev("PreToolUse", sid: "t", t: 7) {
+                    $0.agentId = "r"; $0.agentType = "Explore"; $0.toolName = "Grep"; $0.toolInput = .object(["pattern": .string("login")])
+                })
+        }
+        let f = try! #require(NotchActivityState.make(sessions: s.active, quota: nil, focus: "t").focus)
+        #expect(f.lines.map(\.name) == ["Main", "Explore", "Plan"])
+        #expect(f.lines.map(\.state) == [.running, .running, .done])
+        let running = f.lines[1]
+        let label = running.accessibilityLabel(now: (running.since ?? t0).addingTimeInterval(42))
+        #expect(label.hasPrefix("Explore subagent, running, Grep") && label.hasSuffix("42 seconds"))
+        #expect(f.lines[2].accessibilityLabel().contains("Plan subagent, done, Planned"))
+    }
+
+    @Test func focusFallsBackToTheListWhenThereIsNothingToShow() {
+        let s = store { _ = $0.apply(ev("UserPromptSubmit", sid: "a") { $0.prompt = "go" }) }
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, focus: "a").focus == nil, "no subagents")
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, focus: "gone").focus == nil)
+        #expect(NotchActivityState.make(sessions: s.active, quota: nil, focus: "a").rows.count == 1)
+    }
 }

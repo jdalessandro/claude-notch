@@ -82,9 +82,41 @@ public struct PendingPermission: Sendable, Equatable, Identifiable {
     /// True when a hook process is blocked waiting for our answer (we can approve from the notch).
     public var canAnswer: Bool
     public var since: Date
+    /// Full length of the command / path asked about (the summary is clipped), and whether it is a high-risk one.
+    public var commandLength = 0
+    public var destructive = false
     /// Set when this "permission" is really Claude asking the user a question.
     public var question: AskedQuestion?
+    /// Claude Code's suggested allow rule for this request, re-targeted to `destination: "session"`, and its short
+    /// label ("npm install"). Nil when Claude Code suggested none or the rule is too broad to offer.
+    public var sessionRule: JSONValue?
+    public var sessionScope: String?
     public var isQuestion: Bool { question != nil || toolName == AskedQuestion.toolName }
+
+    /// Picks the first `addRules`/`allow` suggestion that targets this tool and re-targets it to this session only.
+    /// A Bash rule must carry a command pattern (never "all of Bash"); anything oversized is not offered.
+    public static func sessionRule(from suggestions: JSONValue?, tool: String?) -> (rule: JSONValue, label: String)? {
+        guard let tool, case .array(let entries)? = suggestions else { return nil }
+        for e in entries {
+            guard e["type"]?.stringValue == "addRules", e["behavior"]?.stringValue == "allow",
+                case .array(let rules)? = e["rules"], !rules.isEmpty, rules.count <= 4
+            else { continue }
+            let ok = rules.allSatisfy { r in
+                guard r["toolName"]?.stringValue == tool else { return false }
+                let c = r["ruleContent"]?.stringValue
+                if let c, c.isEmpty || c.count > 500 { return false }
+                return tool != "Bash" || c != nil
+            }
+            guard ok, let first = rules.first else { continue }
+            let label = first["ruleContent"]?.stringValue ?? tool
+            return (
+                .object([
+                    "type": .string("addRules"), "rules": .array(rules), "behavior": .string("allow"), "destination": .string("session"),
+                ]), label
+            )
+        }
+        return nil
+    }
 
     /// Whether `event` means this request has been settled elsewhere (answered in the terminal, tool ran,
     /// turn ended). Deliberately narrow: unrelated events such as the `Notification` that Claude Code fires
@@ -320,11 +352,15 @@ public struct SessionStore: Sendable {
             let alreadyAnnounced = s.status == .needsPermission && (s.pending == nil || s.pending?.toolUseId == p.toolUseId)
             s.status = .needsPermission; s.unseen = true
             let asked = p.toolName == AskedQuestion.toolName ? AskedQuestion.parse(p.toolInput) : nil
+            let suggested = asked == nil ? PendingPermission.sessionRule(from: p.permissionSuggestions, tool: p.toolName) : nil
             s.pending = PendingPermission(
                 id: UUID(), toolName: p.toolName ?? "tool",
                 summary: asked?.text ?? Self.summarize(tool: p.toolName, input: p.toolInput) ?? (p.toolName ?? "tool"),
                 message: p.message, agentType: p.agentId == nil ? nil : p.agentType, agentId: p.agentId,
-                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now, question: asked)
+                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now,
+                commandLength: asked == nil ? (p.toolInput?["command"]?.stringValue?.count ?? 0) : 0,
+                destructive: CommandRisk.isDestructive(tool: p.toolName, input: p.toolInput, cwd: s.cwd), question: asked,
+                sessionRule: suggested?.rule, sessionScope: suggested?.label)
             s.attentionMessage = p.message
             if !alreadyAnnounced { effect = .notify(sessionId: sid, kind: .permission) }
 
@@ -446,14 +482,17 @@ public struct SessionStore: Sendable {
     }
 
     /// Synthetic numbers for `--demo` mode and UI previews.
-    public mutating func setDemoUsage(_ id: String, ctxFraction: Double, cost: Double, tokens: Int) {
+    public mutating func setDemoUsage(
+        _ id: String, ctxFraction: Double, cost: Double, tokens: Int, branch: String = "main", lines: (added: Int, removed: Int) = (0, 0)
+    ) {
         guard var s = sessions[id] else { return }
         // The window comes from the real model catalog; if it's unavailable the demo shows no context gauge.
         s.contextWindow = catalog.window(for: "claude-opus-5-5")
         s.contextTokens = Int(ctxFraction * Double(s.contextWindow ?? 0))
         s.reportedCostUSD = cost
         s.usage = TokenUsage(input: tokens / 20, output: tokens / 10, cacheRead: tokens * 8 / 10, cacheWrite: tokens / 20)
-        s.model = "claude-opus-5-5"; s.gitBranch = "main"; s.workingSince = s.status == .working ? Date().addingTimeInterval(-74) : nil
+        s.model = "claude-opus-5-5"; s.gitBranch = branch; s.linesAdded = lines.added; s.linesRemoved = lines.removed
+        s.workingSince = s.status == .working ? Date().addingTimeInterval(-74) : nil
         sessions[id] = s
     }
 

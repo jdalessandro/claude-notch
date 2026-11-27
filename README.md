@@ -4,65 +4,23 @@
 
 <h1 align="center">NotchBot</h1>
 
-**An unofficial notch companion for [Claude Code](https://claude.com/claude-code): a Dynamic-Island-style status display for MacBooks with a display cutout.**
-NotchBot is an independent, community project. It is not made by, affiliated with, or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
-See every running agent at a glance, get told when something finishes or needs you, approve tool permissions
-without switching windows, and keep an eye on your plan limits. All of it lives around the notch.
+<p align="center"><strong>Your Claude Code agents, in the notch.</strong><br>
+A Dynamic-Island-style status display for <a href="https://claude.com/claude-code">Claude Code</a> on MacBooks with a display cutout.</p>
+
+See every running agent at a glance, get told when something finishes or needs you, approve tool permissions without
+switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
 <p align="center">
   <img src="docs/screens/expanded-question.png" alt="Expanded island: Claude's question as a card, another session's permission request with Allow/Deny, and plan limits" width="380">
 </p>
 
-## The island
-
-Claude Notch is a macOS **Live Activity** (ActivityKit, macOS 27.3+). The system draws it in the island beside the
-camera cutout, decides its size and position, and expands it; the app feeds it state as your sessions change.
-
-### Compact
-
-The logo sits on the left of the cutout and a waveform on the right: one bar per working session, thinner bars for
-their subagents. A Live Activity can't run animations on its own, so the app sends a beat about once a second while
-agents run and the bars move to it. The waveform is coral while agents work, amber when something waits on you, and
-rests as dots when nothing runs.
-
-<p align="center">
-  <img src="docs/screens/compact-working.png" alt="Compact island while agents work" width="300">
-  &nbsp;&nbsp;
-  <img src="docs/screens/compact-needs-you.png" alt="Compact island when something needs you" width="300">
-</p>
-
-### Island size
-
-- **A real Dynamic Island.** The island is a macOS Live Activity, drawn by the system beside the cutout: a compact
-  view with the headline and a waveform that moves while agents work, and an expanded view that opens by itself when
-  something needs you. The system decides its size, position and when it expands.
-- **The most urgent request up front.** A permission request shows the exact command with **Allow / Deny**; a question
-  shows its choices with **Answer in Claude** / **Not now**. Up to three more sessions follow, each with its own state,
-  timer, subagent count and context, and a second permission request can be answered inline from its row.
-- **Everything about a session.** Name, branch, elapsed time, the **prompt** that started the turn, the current tool,
-  the **subagent tree** (what each is doing and how long it took), context usage, lines changed, and, when a turn
-  finishes, **Claude's result** for you to review.
-- **A subagent tree you can explore.** The header counts the total ("6 agents" over "4 subagents running"), and every session shows its own stat under its token count ("⑂ 2 running · 1 done"; a branch glyph and count in the compact view). Each session lists its subagents running-first with a ├/└ tree; tap the **Subagents** header to open all of them with what each is doing right now, its tool-call count and its last result. A session whose main turn has ended but whose subagents still run stays **Working** ("Waiting on 2 subagents") and is only marked finished, with its notification, when the last one stops. A subagent silent for 15 minutes is treated as finished so nothing can stay stuck.
-- **Reviewed without busywork.** A finished result leaves *Ready to review* when you reply in that session or tap
-  **Done**.
-- **Approve from the island.** Tool-permission requests show the exact command with **Allow / Deny**. Requests from a
-  subagent say so.
-- **Plan limits like Claude Desktop.** 5-hour, weekly, and per-model weekly limits as percentage bars with reset times
-  (blue, amber from 75%, red from 90%). A **Limits | Tokens** toggle on the card flips to token totals for the last
-  5 hours, today, and 7 days; percentages are the default. On Pro/Max dollars are hidden (you are metered by quota, not money);
-  on API billing the cost is shown.
-- **Notifications** (sound and system banners) for approval needed, waiting for input, finished, and failed, each toggleable.
-- **Click anywhere on a session** to jump to the app it runs in. A single [settings window](#settings) controls the rest.
-- **Private and local.** No network code. See [SECURITY.md](SECURITY.md).
-
-## Requirements
-
-- A Mac running **macOS 27.3 or later** (Live Activities on the Mac). Best on a notched MacBook Pro.
-- **Claude Code** (CLI and/or the Claude desktop app's Code tab).
-
-That's all. Releases are signed with a Developer ID and notarized, so you don't need Xcode or an Apple developer account.
+> NotchBot is an unofficial, independent community project. It is not made by, affiliated with, or endorsed by
+> Anthropic ([details](#trademarks-and-affiliation)).
 
 ## Install
+
+You need a Mac on **macOS 27.3 or later** (Live Activities on the Mac; best on a notched MacBook) and **Claude Code**
+(the CLI and/or the Claude desktop app's Code tab). Releases are signed and notarized: no Xcode or developer account needed.
 
 **Homebrew**
 
@@ -70,236 +28,114 @@ That's all. Releases are signed with a Developer ID and notarized, so you don't 
 brew install --cask jdalessandro/notchbot/notchbot
 ```
 
-**One-line script** (downloads the latest release, checks its SHA-256, copies the app to `/Applications`):
+**One-line script** (downloads the latest release, checks its SHA-256, installs to `/Applications`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jdalessandro/notchbot/main/scripts/install.sh | bash
 ```
 
-**Manual:** download `Notchbot-<version>.dmg` from [Releases](https://github.com/jdalessandro/notchbot/releases),
-open it and drag **NotchBot** to Applications.
+**DMG:** download `Notchbot-<version>.dmg` from [Releases](https://github.com/jdalessandro/notchbot/releases), open it
+and drag **NotchBot** to Applications.
 
-> Releases are being set up; until the first one is published, [build from source](#build-from-source).
+> No release is published yet. Until then, [build from source](CONTRIBUTING.md#build-the-app).
 
-The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
-the menu bar.
+### First run
 
-Then click **Install hooks** (in the island footer, or *Settings ▸ Integration*), and restart any Claude sessions that were
-already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
-at `settings.json.notchbot.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
-If you installed with Homebrew, run that in-app uninstall *before* `brew uninstall --cask notchbot`: brew removes the
-app but not the hooks it added to `~/.claude/settings.json`.
+1. Open NotchBot. A window appears for a moment (starting a Live Activity needs the app in the foreground), then the
+   island starts and the app lives in the menu bar.
+2. Click **Install hooks** (in the island footer, or *Settings ▸ Integration*).
+3. Restart any Claude sessions that were already running.
+4. To keep the island visible in fullscreen apps, set System Settings ▸ Control Center ▸ "Automatically hide and show the menu bar" to **Never**. NotchBot asks about this once on first launch and never changes the setting itself.
 
-Open **Settings ▸ Integration** and click **Install hooks**, then restart any Claude sessions that were already
-running. The hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup at
-`settings.json.claude-notch.bak`. They call a copy of the forwarder in `~/Library/Application Support/ClaudeNotch/bin`,
-which the app refreshes on launch after an update.
+Hooks are merged into `~/.claude/settings.json` next to any you already have, with a one-time backup at
+`settings.json.notchbot.bak`. Just want to look around first? Launch with synthetic agents:
+`open -n /Applications/Notchbot.app --args --demo`.
 
-**Updating hooks:** when your hooks were installed by an older version and miss events the island needs (such as
-`SubagentStart`), the Integration tab says an update is available. Click **Reinstall**. To remove everything:
-**Settings ▸ Integration ▸ Uninstall**.
+To remove everything: *Settings ▸ Integration ▸ Uninstall*, then delete the app (or `brew uninstall --cask notchbot`).
+Uninstall the hooks **first**: removing the app does not remove the hooks it added to `~/.claude/settings.json`.
 
-**Just want to look around?** `make demo` launches the app with synthetic agents and no hooks.
+## What you get
 
-Signed and notarized releases with a Homebrew cask are being set up (`scripts/release.sh`,
-`packaging/notchbot.rb.template`); until the first release is published, build from source as above.
+### A compact island that tells you the state
 
-## Settings
+The logo sits left of the cutout and a waveform on the right, one bar per working session (thinner bars for subagents).
+The waveform is **grey** while agents work, **orange** when something waits on you, and rests as dots when idle. A
+**blue** badge on the logo counts results waiting for your review. Red means negative: failed, destructive, Deny.
 
-Open **Settings…** from the menu-bar icon, or press ⌘, while the app is active. Changes apply immediately and persist;
-**Advanced ▸ Reset all settings…** restores the defaults below.
+<p align="center">
+  <img src="docs/screens/compact-working.png" alt="Compact island while agents work" width="270">
+  &nbsp;
+  <img src="docs/screens/compact-needs-you.png" alt="Compact island when something needs you" width="270">
+  &nbsp;
+  <img src="docs/screens/compact-idle.png" alt="Compact island when idle" width="270">
+</p>
 
-### General
+### An expanded island that gets out of your way
 
-| Setting | Default | What it does |
-|---|---|---|
-| **Island size** | Default | A five-step slider: *Smaller*, *Small*, *Default*, *Large*, *Larger*. Scales the island's text and icons (88% to 125%). *Large* and *Larger* show two session cards per page instead of three. |
-| **Raise the island when something needs you** | On | Also raises the island when a turn finishes with a result to review. Permission requests, questions, sessions waiting for input and failed turns always raise it. |
-| **Forget idle sessions after** | 12 hours | 1 hour, 4 hours, 12 hours or 1 day. An idle session drops off the island after this long. |
+It opens by itself when something needs you (and on a finished result, if you like), and you can open it any time.
 
-### Content
+<p align="center">
+  <img src="docs/screens/expanded-permission.png" alt="A permission request showing the exact command with Allow and Deny" width="300">
+  &nbsp;
+  <img src="docs/screens/expanded-working.png" alt="Sessions that are working, with subagent trees" width="300">
+</p>
 
-| Setting | Default | What it does |
-|---|---|---|
-| **Show on each session**: your prompt, subagents, context meter and changed lines, usage and quota | All on | These toggles don't change the island, which always shows names, branch, status, requests, subagent and context stats and the plan-limit footer. |
-| **Usage card shows** | Plan limits (%) | Percentages or token counts for the usage card. The island's footer always shows percentages. |
-| **Dollar cost** | Automatic | *Automatic* hides dollars on Pro and Max (you're metered by quota, not money) and shows them on API billing; *Always* / *Never* override it. The island never shows dollars. |
-| **Detected plan** | | Read-only: the plan Claude Notch detected from Claude Code's login (`~/.claude.json`) and environment. |
+- **Approve from the island.** A permission request shows the exact command with **Allow / Deny**. Requests from a
+  subagent say so. Approvals are answered only on this card: any other waiting session shows a quiet **Review** that
+  brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) keeps green **Allow** / red **Deny** but asks you to tap Allow twice (**Allow**, then **Confirm**).
+- **Questions.** When Claude asks you something, the island shows the question and its choices; **Answer in Claude**
+  jumps to the session, **Not now** dismisses it.
+- **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,
+  context usage, lines changed and token count. Click a session to jump to the app it runs in.
+- **A subagent tree.** Each session lists its subagents (what each is doing, tool-call counts, last result). A session
+  whose main turn ended but whose subagents still run stays *Working*, and is only marked finished (and notified) when
+  the last one stops.
+- **Results to review.** When a turn finishes you see Claude's result, marked *Ready to review* until you reply in that
+  session or tap **Done**. **Mark all reviewed** is in the island's **⋯** menu.
+- **Plan limits.** 5-hour, weekly and per-model weekly limits as bars with reset countdowns (grey, orange from 75%, red
+  from 90%), the way Claude Desktop shows them. Flip to token totals (last 5 hours, today, 7 days) with the
+  **Limits | Tokens** toggle. Pro and Max hide dollars (you're metered by quota); API billing shows cost.
+- **Notifications** with sound and system banners for approval needed, waiting for input, finished and failed.
+- **Pages.** More sessions than fit? A pager flips through them.
 
-### Notifications
+<p align="center">
+  <img src="docs/screens/expanded-idle.png" alt="Expanded island with no sessions, showing plan limits" width="300">
+  &nbsp;
+  <img src="docs/screens/expanded-larger.png" alt="Island size set to Larger: bigger text, two sessions per page" width="300">
+</p>
 
-| Setting | Default | What it does |
-|---|---|---|
-| **Notify me when**: approval needed, waiting for your input, turn finished, turn failed | All on | Which events send an alert. |
-| **Play a sound** | On | A chime with the alert. While the island is live, the island's own alert carries the sound. |
-| **Show system notifications** | On | Banners in Notification Center. |
-| **Include details in banners** | On | Puts the command or a snippet of Claude's reply in the banner. Turn off if banners can show on a locked screen you share. |
+### Make it yours
 
-### Integration
+Open **Settings** from the island's gear icon or **⋯** menu, the menu-bar icon, or ⌘, . Everything applies instantly.
 
-| Setting | Default | What it does |
-|---|---|---|
-| **Claude Code hooks** | Not installed | **Install hooks**, **Reinstall** (also applies updates) and **Uninstall**; see [Install](#connect-claude-code-install-the-hooks). |
-| **Approve permissions from the island** | On | The `PermissionRequest` hook waits for your **Allow** / **Deny** on the island. Off is observe-only: the normal terminal prompt appears and you're still notified. Changing it rewrites the hook entry automatically. |
-| **Quota gauges** | Off | Registers `claude-notch-hook --statusline` as Claude Code's status line, which also reports the exact context-window size and plan limits while a terminal session answers. Only installed if you don't already have a status line; an existing one is never replaced. Optional: the plan limits come from the usage API either way. |
-
-### Advanced
-
-| Setting | Default | What it does |
-|---|---|---|
-| **Log raw hook events** | Off | Writes every hook event to `~/Library/Application Support/ClaudeNotch/events.jsonl` for debugging. It contains prompt text and tool inputs: keep it private. **Show log in Finder** reveals it. |
-| **Reset all settings…** | | Restores every default above (hooks and the status line are left as they are). |
-
-## Plan limits
-
-On Pro and Max, the footer's numbers come from the same request Claude Code's `/usage` makes
-(`api.anthropic.com/api/oauth/usage`), authenticated with **Claude Code's own login** from your keychain. macOS asks
-once to allow access to the `Claude Code-credentials` item. The app asks about every five minutes and whenever you tap
-**refresh** on the island; the last numbers are saved, so they survive restarts. If a request fails, the island keeps
-the last-known numbers. Nothing is sent on API (pay-as-you-go) billing, which has no plan limits.
-
-> **Privacy.** This is the only network request Claude Notch makes; everything else stays on your Mac. The token is
-> sent only to Anthropic and never logged. When the login has expired, the app renews it and writes the new
-> credentials back to the same keychain item, which can occasionally make Claude Code ask you to sign in again. The
-> endpoint isn't a documented API and may change. Details in [SECURITY.md](SECURITY.md).
-
-## Approving permissions from the island
-
-With *Approve permissions from the island* on (the default), the `PermissionRequest` hook holds Claude's prompt until
-you tap **Allow** or **Deny**:
-
-- Claude waits (up to Claude Code's 10-minute hook timeout), and the terminal prompt doesn't appear meanwhile.
-- If the app isn't running, the hook exits immediately and the normal prompt appears: it never blocks a session.
-- Questions (`AskUserQuestion`) are answered in Claude itself: **Answer in Claude** opens the session.
-
-### Build from source
-
-For contributors, or until a release exists. You need Xcode 27.3+ and an Apple developer team (a free Personal Team is
-enough for local builds). Ad-hoc signing isn't: the island's Allow / Deny buttons are App Intents, which the system only
-runs for properly signed apps.
-
-```bash
-git clone https://github.com/jdalessandro/notchbot.git
-cd notchbot
-echo YOUR_TEAM_ID > .xcode-team   # 10 characters, from Xcode ▸ Settings ▸ Accounts (never committed)
-make bundle                       # generates the Xcode project and builds dist/Notchbot.app
-open dist/Notchbot.app
-```
-
-## How it works
-
-```
-claude (CLI / desktop) ── hook event ──▶ notchbot-hook ── Unix socket ──▶ Notchbot.app ──▶ the island
-                                                              ◀── Allow / Deny (permission requests only)
-claude status line ─────────────────────▶ notchbot-hook --statusline ──▶ quota windows
-~/.claude/projects/**/*.jsonl ──────────────────────────────────────────▶ tokens, context, usage windows
-```
-
-| Source | What it provides |
+| Tab | What you can change |
 |---|---|
-| **Claude Code hooks** | Live events: prompts, tool calls, subagent start/stop, permission requests, questions, notifications, turn end. |
-| **Transcripts** | Token usage, model, titles, context size, lines changed. |
-| **Model catalog** (`~/.claude/cache/model-catalog`) | Each model's context-window size, as Claude itself caches it. |
-| **Usage API** | Plan-limit percentages and reset times (Pro / Max). |
-| **Status line** (optional) | The exact context-window size; also limits, while a terminal session answers. |
-
-The Agent SDK is deliberately not used: it launches and controls sessions of its own and cannot attach to a running
-one. Details and what was verified are in [docs/RESEARCH.md](docs/RESEARCH.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-### Claude desktop app
-
-Sessions from the desktop app's Code tab fire the same hooks and write the same transcripts, so they appear alongside
-CLI sessions. They don't report which terminal they run in, so clicking one opens the Claude app.
-
-## Quota gauges (Pro / Max)
-
-Percentages for the 5-hour and weekly limits come from Claude Code's status line. Turn them on with
-*Settings ▸ Integration ▸ Enable quota gauges* (or the **Enable** button in the Usage card). This registers
-`notchbot-hook --statusline` as your status line **only if you don't already have one**; an existing status line is never replaced.
-The last report is saved (`quota.json` in Application Support) and shown with an "Updated … ago" pill, so the bars stay populated between terminal sessions and across app restarts. Until a terminal session has reported at least once, the card says so (use the **Tokens** toggle meanwhile).
-
-> **Terminal sessions only.** The status line is a terminal feature, so limits arrive when a Claude Code *terminal*
-> session responds. Sessions that run only in the Claude desktop app's Code tab may never report them; if you never see
-> percentages, that is the likely reason, and the token totals still work. Window resets are handled locally: a window
-> whose reset time has passed shows as 0%, not a frozen number.
-
-## Approving permissions from the island
-
-With *Approve permissions from the island* on (default), the `PermissionRequest` hook holds Claude's prompt until you
-click **Allow** or **Deny**. Things to know:
-
-- Claude waits (up to Claude Code's 10-minute hook timeout), and the terminal prompt does not appear while it waits.
-- If the app isn't running, the hook exits immediately and the normal terminal prompt appears: it never blocks a session.
-- Prefer to answer in the terminal? Turn the setting off for **observe-only** mode; you still get notified.
-
-## Settings
-
-Open from the menu-bar icon, the island's **⋯ ▸ Settings…**, or ⌘, while the app is active. Changes apply immediately.
-
-| Tab | Options |
-|---|---|
-| **General** | Raise the island when something needs you · forget idle sessions after |
-| **Content** | Show prompt, subagents, context meter and changed lines, usage and quota · usage card shows limits (%) or tokens · dollar cost (automatic / always / never) |
-| **Notifications** | Per event (approval, input, finished, failed) · sound · system notifications · include command/reply details in banners |
+| **General** | Island size (5 steps) · review badge on the logo · raise the island when something needs you · how long idle sessions stay |
+| **Content** | Show or hide prompt, subagents, context meter and changed lines, usage and quota · usage as limits (%) or tokens · dollar cost |
+| **Notifications** | Which events alert you · sound · system banners · details in banners |
 | **Integration** | Install / reinstall / uninstall hooks · approve from the island · quota gauges |
-| **Advanced** | Raw event log (diagnostics) · reset to defaults · version |
+| **Advanced** | Raw event log for debugging · reset all settings |
 
-## Troubleshooting
+Every option, its default and what it does is in the **[User guide](docs/GUIDE.md)**.
 
-| Symptom | Try |
-|---|---|
-| Nothing appears | Is the app running (menu-bar robot)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
-| Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
-| Island missing | Quit and reopen NotchBot. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
-| Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
-| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, NotchBot leaves it alone. |
-| Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
-| Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
+## Privacy
 
-## Development
+NotchBot runs entirely on your Mac and reads only local Claude Code data (hook events and session transcripts). The only
+network request it makes is the same one Claude Code's `/usage` makes, to show your plan limits on Pro and Max (using
+Claude Code's own login from your keychain; nothing is sent on API billing). See the
+[User guide](docs/GUIDE.md#plan-limits) and [SECURITY.md](SECURITY.md).
 
-```bash
-make build test      # build and run the core test suite
-make lint            # swift-format, strict
-make format          # fix formatting
-make demo            # run with fake agents
-make snapshots       # re-render docs/screens/*.png from the demo data (offscreen)
-```
+## Help
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Source layout:
-
-```
-Sources/NotchbotCore   pure logic: events, state machine, transcript + usage parsing, IPC, installer, preferences
-Sources/notchbot-hook the forwarder Claude Code invokes (never blocks a session)
-App/                      the host app: model, Live Activity host, settings, menu bar
-Shared/                   island views, App Intents and activity attributes (app + widget)
-Widget/                   the widget extension that draws the Live Activity
-Tests/                    Swift Testing suites
-scripts/, packaging/      Xcode project generator, bundle and release scripts, Homebrew cask template
-```
-
-## Reliability
-
-The hook forwarder runs inside your Claude sessions, so it is built never to get in the way: every socket operation has
-a deadline (about a second), prompts and tool inputs are truncated before sending, and if the app is not running it
-exits silently. The app reads each connection under a short total deadline and delivers events strictly in order, so one
-stalled client cannot delay or reorder the rest. Config changes are guarded: the installer follows symlinks, preserves
-file permissions, refuses to touch unexpected JSON shapes, skips no-op writes, and aborts if another tool modified
-`settings.json` while it worked.
-
-## Limitations
-
-- Plan-limit percentages need a terminal Claude Code session to report them (see above); desktop-only use shows the last remembered values.
-- The status line reports the 5-hour and weekly windows; per-model weekly rows (like Claude Desktop's "Weekly · Fable") appear only if Claude Code includes them.
-- Context-window size is inferred (200k, or 1M if observed larger) unless the status line is enabled.
-- The `Notification` payload field names come from documentation excerpts; the state machine also falls back to the message text.
-- Clicking a session activates the terminal/app but cannot focus a specific tab.
-- The system owns the island: no hover, scrolling or text entry, and the activity can only be (re)started while the app is in the foreground.
+- **Troubleshooting:** [docs/GUIDE.md#troubleshooting](docs/GUIDE.md#troubleshooting)
+- **Bugs and ideas:** [open an issue](https://github.com/jdalessandro/notchbot/issues)
+- **Changes:** [CHANGELOG.md](CHANGELOG.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) (build from source, architecture, releasing)
 
 ## Roadmap
 
-Launch or resume agents from the island (Agent SDK) · send a quick follow-up prompt · spend-limit row for API plans ·
-Sparkle auto-update · launch at login.
+Launch or resume agents from the island · send a quick follow-up prompt · spend-limit row for API plans · Sparkle
+auto-update · launch at login.
 
 ## License
 

@@ -104,6 +104,7 @@ final class AppModel {
             Task { @MainActor in
                 self?.island.beat()
                 self?.autoPage()
+                self?.expireConfirmation()
             }
         }
         if demo {
@@ -154,7 +155,8 @@ final class AppModel {
     func refreshQuota() async {
         guard !quotaRefreshing, case .subscription = billing else { return }
         quotaRefreshing = true
-        defer { quotaRefreshing = false; quotaFetchedAt = Date() }
+        reconcile()
+        defer { quotaFetchedAt = Date() }
         do {
             let q = try await UsageAPI.fetch()
             quota = q
@@ -164,6 +166,7 @@ final class AppModel {
             quotaError = error.localizedDescription
             activityTrace("quota refresh failed: \(error.localizedDescription)")
         }
+        quotaRefreshing = false
         reconcile()
     }
     func openUsageSettings() { settings.tab = .integration; onOpenSettings?() }
@@ -230,6 +233,17 @@ final class AppModel {
         let reason = decision == .deny ? "Denied from NotchBot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
             store.resolvePermission(sessionId, allowed: decision == .allow)
+        } else {
+            store.detachPending(sessionId)
+        }
+        reconcile()
+    }
+
+    /// "Allow for session": allows and hands Claude Code the suggested rule with `destination: "session"`.
+    func answerAllowForSession(_ sessionId: String) {
+        guard let rule = store.sessions[sessionId]?.pending?.sessionRule else { return answer(sessionId, .allow) }
+        if broker.answerAllowForSession(sessionId, rule: rule) {
+            store.resolvePermission(sessionId, allowed: true)
         } else {
             store.detachPending(sessionId)
         }
@@ -304,8 +318,37 @@ final class AppModel {
     /// needing the user) holds the current page for `pageHold` instead.
     private var lastPageTurn = Date()
     private var pageHoldUntil = Date.distantPast
+    /// The session whose subagent tree the island shows instead of the session list; paging pauses while it is set.
+    private var focusedSession: String?
     private static let pageInterval: TimeInterval = 6
     private static let pageHold: TimeInterval = 20
+
+    /// A request the user chose to see in full ("Review"); it takes the featured card while it is live.
+    private var reviewRequestId: String?
+    /// Allow on a destructive request is two taps ("Allow", then "Confirm"); this is the armed state between them.
+    private var confirmation = AllowConfirmation()
+    /// When the featured card's request became visible, and when the card last changed: Allow taps right after a
+    /// request appears on the card, and page turns right after the card changes, are ignored (`IslandGuard`). Rows
+    /// never answer, so only the card's request is tracked.
+    private var visibleSince: [String: Date] = [:]
+    private var promptChangedAt = Date.distantPast
+    private var lastPromptId: String?
+
+    private func trackVisibility(_ state: NotchActivityState) {
+        let now = Date()
+        let ids = Set([state.prompt?.requestId].compactMap { $0 })
+        visibleSince = visibleSince.filter { ids.contains($0.key) }
+        for id in ids where visibleSince[id] == nil { visibleSince[id] = now }
+        if state.prompt?.requestId != lastPromptId {
+            lastPromptId = state.prompt?.requestId
+            promptChangedAt = now
+        }
+    }
+
+    /// Drops an armed "Confirm" that ran out of time and redraws "Allow".
+    private func expireConfirmation() {
+        if confirmation.expire() { reconcile() }
+    }
 
     private func holdPage() {
         pageHoldUntil = Date().addingTimeInterval(Self.pageHold)
@@ -315,8 +358,9 @@ final class AppModel {
     /// Called every second: turns to the next page when there is more than one and nobody is interacting.
     private func autoPage() {
         let now = Date()
-        guard let st = island.current, st.pages > 1, now >= pageHoldUntil,
-            now.timeIntervalSince(lastPageTurn) >= Self.pageInterval
+        guard let st = island.current, st.focus == nil, focusedSession == nil, now >= pageHoldUntil,
+            now.timeIntervalSince(lastPageTurn) >= Self.pageInterval,
+            IslandGuard.canAutoTurn(state: st, promptChangedAt: promptChangedAt, now: now)
         else { return }
         lastPageTurn = now
         islandPage += 1
@@ -324,12 +368,33 @@ final class AppModel {
         activityTrace("auto page \(islandPage + 1)/\(st.pages)")
     }
 
+    private func makeState(page: Int) -> NotchActivityState {
+        var note: NotchActivityState.LimitsNote?
+        if quotaRefreshing {
+            note = .refreshing
+        } else if quotaError != nil {
+            note = .failed
+        } else if quotaNow == nil, planName == nil {
+            note = .notApplicable
+        }
+        return NotchActivityState.make(
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: page,
+            featuredRequestId: reviewRequestId, confirmingRequestId: confirmation.armedRequest(),
+            focus: prefs.showSubagents ? focusedSession : nil, limitsNote: note,
+            hooksInstalled: hooksInstalled)
+    }
+
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
     /// turn) also raises an alert so the island expands by itself, as the old auto-open did.
     func reconcile() {
         if snapshotOnly { return }
-        var state = NotchActivityState.make(
-            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+        if let r = reviewRequestId, !store.active.contains(where: { $0.isAnswerable(requestId: r) }) { reviewRequestId = nil }
+        var state = makeState(page: islandPage)
+        // "Confirm" only ever belongs to the card on screen: another card or a finished request disarms it.
+        if confirmation.requestId != nil, confirmation.requestId != state.prompt?.requestId {
+            confirmation.clear()
+            state = makeState(page: islandPage)
+        }
         state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -342,13 +407,15 @@ final class AppModel {
         if alert != nil { holdPage() }
         if alert != nil, state.page != 0 {
             islandPage = 0
-            state = NotchActivityState.make(
-                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+            state = makeState(page: 0)
             state.scale = prefs.islandSize.scale
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
         if !prefs.showReviewBadge { state.reviews = 0 }
+        state.subagentTree = prefs.showSubagents
+        if state.focus == nil { focusedSession = nil }  // the session ended or has no subagents any more
+        trackVisibility(state)
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -367,6 +434,12 @@ final class AppModel {
         case .nextPage, .previousPage:
             activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
+            focusedSession = nil
+            reconcile()
+            return
+        case .focusSubagents:
+            activityTrace("intent focus \(sessionId)")
+            focusedSession = prefs.showSubagents && !sessionId.isEmpty && sessionId != focusedSession ? sessionId : nil
             reconcile()
             return
         default: break
@@ -374,12 +447,35 @@ final class AppModel {
         guard let s = store.sessions[sessionId] else { return }
         activityTrace("intent \(action) answerable=\(s.isAnswerable(requestId: requestId))")
         switch action {
-        case .allow where s.isAnswerable(requestId: requestId): answer(sessionId, .allow)
-        case .deny where s.isAnswerable(requestId: requestId): answer(sessionId, .deny)
-        case .allow, .deny: break
+        case .allow where s.isAnswerable(requestId: requestId):
+            // A request that has only just appeared may not be the one the user aimed at (pages move under the cursor).
+            guard IslandGuard.allowAccepted(visibleSince: visibleSince[requestId]) else {
+                activityTrace("allow ignored: request visible < \(IslandGuard.tapDelay)s")
+                return
+            }
+            switch confirmation.tap(requestId: requestId, destructive: s.pending?.destructive ?? false) {
+            case .allow: answer(sessionId, .allow)
+            case .armed: reconcile()  // "Allow" becomes "Confirm"
+            case .ignored: activityTrace("allow ignored: duplicate of the arming tap")
+            }
+        case .review where s.isAnswerable(requestId: requestId):
+            // Rows never answer: "Review" moves the request to the card, where Allow / Deny live. The card's tap
+            // delay then applies from now, so the tap that brought it up can't also answer it.
+            confirmation.clear()
+            reviewRequestId = requestId
+            islandPage = 0
+            visibleSince[requestId] = nil
+            reconcile()
+        case .deny where s.isAnswerable(requestId: requestId):
+            confirmation.clear()
+            answer(sessionId, .deny)
+        case .allowSession
+        where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland && s.pending?.destructive != true:
+            answerAllowForSession(sessionId)
+        case .allow, .allowSession, .deny, .review: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage, .refreshQuota, .openSettings: break
+        case .nextPage, .previousPage, .refreshQuota, .openSettings, .focusSubagents: break
         }
     }
 
@@ -520,9 +616,42 @@ final class AppModel {
             e("SubagentStop", "payments-api", ago: 50) {
                 $0.agentId = "a2"; $0.lastAssistantMessage = "Added 6 tests in RetryTests.swift"
             })
+        // ...and two more running (Plan, then another general-purpose one), plus a finished one, so the tree has overflow
+        for (aid, type, desc, tool, input, ago) in [
+            ("a3", "Plan", "Plan the backoff changes", "Read", ["file_path": "Sources/Payments/Retry.swift"], 80.0),
+            ("a4", "general-purpose", "Update the client docs", "Edit", ["file_path": "docs/client.md"], 60.0),
+            ("a5", "Explore", "Check idempotency keys", "", [:], 170.0),
+        ] {
+            _ = store.apply(
+                e("PreToolUse", "payments-api") {
+                    $0.toolName = "Task"; $0.toolInput = .object(["description": .string(desc)])
+                })
+            _ = store.apply(
+                e("SubagentStart", "payments-api", ago: ago) {
+                    $0.agentId = aid; $0.agentType = type
+                })
+            if !tool.isEmpty {
+                _ = store.apply(
+                    e("PreToolUse", "payments-api") {
+                        $0.agentId = aid; $0.agentType = type; $0.toolName = tool
+                        $0.toolInput = .object(input.mapValues { .string($0) })
+                    })
+            } else {
+                _ = store.apply(
+                    e("SubagentStop", "payments-api", ago: 20) {
+                        $0.agentId = aid; $0.lastAssistantMessage = "Keys are set on every retry"
+                    })
+            }
+        }
         _ = store.apply(
             e("PreToolUse", "payments-api") {
                 $0.toolName = "Bash"; $0.toolInput = .object(["command": .string("swift test --filter Retry")])
+            })
+        // payments-api also asks: a long, risky command, so its row offers Review instead of Allow / Deny
+        _ = store.apply(
+            e("PermissionRequest", "payments-api", reply: true) {
+                $0.toolName = "Bash"
+                $0.toolInput = .object(["command": .string("git push --force-with-lease origin claude/retry-backoff")])
             })
         // web-dashboard: a subagent is asking permission
         _ = store.apply(e("UserPromptSubmit", "web-dashboard") { $0.prompt = "Fix the flaky chart tooltip" })
@@ -532,9 +661,35 @@ final class AppModel {
             })
         _ = store.apply(
             e("PermissionRequest", "web-dashboard", reply: true) {
-                $0.agentId = "w1"; $0.agentType = "general-purpose"; $0.toolName = "Bash";
-                $0.toolInput = .object(["command": .string("npm install --save-dev vitest")])
+                $0.agentId = "w1"; $0.agentType = "Explore"; $0.toolName = "Bash"
+                $0.toolInput = .object([
+                    "command": .string("rm -rf node_modules .next && npm install --save-dev vitest @vitest/coverage-v8 --legacy-peer-deps")
+                ])
             })
+        for (aid, type, desc, tool, pattern, ago) in [
+            ("w2", "Explore", "Find the tooltip handlers", "Grep", "onHover", 30.0),
+            ("w3", "Plan", "Plan the fix", "", "", 38.0),
+        ] {
+            _ = store.apply(
+                e("PreToolUse", "web-dashboard") {
+                    $0.toolName = "Task"; $0.toolInput = .object(["description": .string(desc)])
+                })
+            _ = store.apply(
+                e("SubagentStart", "web-dashboard", ago: ago) {
+                    $0.agentId = aid; $0.agentType = type
+                })
+            if tool.isEmpty {
+                _ = store.apply(
+                    e("SubagentStop", "web-dashboard", ago: 8) {
+                        $0.agentId = aid; $0.lastAssistantMessage = "Reposition on resize"
+                    })
+            } else {
+                _ = store.apply(
+                    e("PreToolUse", "web-dashboard") {
+                        $0.agentId = aid; $0.agentType = type; $0.toolName = tool; $0.toolInput = .object(["pattern": .string(pattern)])
+                    })
+            }
+        }
         // api-gateway: Claude is asking the user a question
         _ = store.apply(e("UserPromptSubmit", "api-gateway") { $0.prompt = "Add an audit log for admin actions" })
         _ = store.apply(
@@ -582,14 +737,31 @@ final class AppModel {
                 $0.lastAssistantMessage =
                     "Added docs/migrating-to-v2.md covering the renamed config keys and the new retry defaults, and linked it from the sidebar under Guides."
             })
+        // mobile-app: Claude stopped and is waiting for the user's input
+        _ = store.apply(e("UserPromptSubmit", "mobile-app") { $0.prompt = "Add pull-to-refresh to the feed" })
+        _ = store.apply(
+            e("Notification", "mobile-app") {
+                $0.notificationType = "idle_prompt"; $0.message = "Claude is waiting for your input"
+            })
+        // data-pipeline: the turn ended on an API error
+        _ = store.apply(e("UserPromptSubmit", "data-pipeline") { $0.prompt = "Backfill the events table" })
+        _ = store.apply(e("StopFailure", "data-pipeline") { $0.message = "API Error: 529 Overloaded. Please try again." })
         // notes-cli: finished and already reviewed -> idle
         _ = store.apply(e("Stop", "notes-cli"))
         store.markSeen("notes-cli")
-        for (id, ctx, cost, tok) in [
-            ("payments-api", 0.42, 1.87, 412_000), ("web-dashboard", 0.71, 3.20, 880_000), ("docs-site", 0.18, 0.34, 96_000),
-            ("notes-cli", 0.1, 0.12, 21_000), ("api-gateway", 0.33, 0.9, 150_000), ("infra-tools", 0.25, 0.7, 120_000),
+        // Varied branches, context levels and line counts so every badge state shows: a long branch name, context past
+        // the amber and red thresholds, and lines changed.
+        for (id, ctx, cost, tok, branch, lines) in [
+            ("payments-api", 0.92, 1.87, 412_000, "claude/fix-flaky-retry-backoff-d6dea5", (128, 34)),
+            ("web-dashboard", 0.71, 3.20, 880_000, "claude/fix-flaky-chart-tooltip-d6dea5", (128, 34)),
+            ("docs-site", 0.18, 0.34, 96_000, "docs/migrating-to-v2", (212, 9)),
+            ("notes-cli", 0.1, 0.12, 21_000, "main", (0, 0)),
+            ("api-gateway", 0.33, 0.9, 150_000, "feature/audit-log", (0, 0)),
+            ("infra-tools", 0.71, 0.7, 120_000, "main", (212, 9)),
+            ("mobile-app", 0.92, 2.4, 640_000, "claude/pull-to-refresh", (45, 12)),
+            ("data-pipeline", 0.55, 1.1, 300_000, "main", (0, 0)),
         ] {
-            store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok)
+            store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok, branch: branch, lines: lines)
         }
         // Subscription plan with live quota windows, as a Max user would see.
         billing = .subscription(plan: "Max 5x"); statusLineInstalled = true

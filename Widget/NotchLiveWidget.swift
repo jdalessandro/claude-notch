@@ -11,9 +11,11 @@ import WidgetKit
 struct NotchbotActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NotchAttributes.self) { ctx in
-            IslandExpanded(state: ctx.state).islandScale(ctx.state.scale).padding(16).opacity(ctx.isStale ? 0.6 : 1)
-                .activityBackgroundTint(.black)
-                .environment(\.colorScheme, .dark)
+            IslandExpanded(state: ctx.state).islandScale(ctx.state.scale).environment(\.islandStale, ctx.isStale).padding(16).opacity(
+                ctx.isStale ? 0.6 : 1
+            )
+            .activityBackgroundTint(.black)
+            .environment(\.colorScheme, .dark)
         } dynamicIsland: { ctx in
             let s = ctx.state
             return DynamicIsland {
@@ -46,6 +48,7 @@ struct NotchbotActivity: Widget {
                         }
                     }
                     .islandScale(s.scale)
+                    .environment(\.islandStale, ctx.isStale)
                     .padding(.horizontal, Island.inset)
                     .padding(.top, 4)
                     .padding(.bottom, Island.inset)
@@ -56,7 +59,7 @@ struct NotchbotActivity: Widget {
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: Island.compactIcon, badge: s.reviews)
+                IslandMinimal(state: s)
             }
             .keylineTint(Island.coral)
         }

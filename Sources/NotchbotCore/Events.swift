@@ -83,6 +83,8 @@ public struct HookPayload: Codable, Sendable, Equatable {
     /// Present on events that fire inside a subagent.
     public var agentId: String?
     public var agentType: String?
+    /// PermissionRequest only: Claude Code's suggested permission updates (e.g. an `addRules` entry for this command).
+    public var permissionSuggestions: JSONValue?
     /// Status-line only: `rate_limits` (subscribers) and `context_window`.
     public var rateLimits: JSONValue?
     public var contextWindow: JSONValue?
@@ -102,6 +104,7 @@ public struct HookPayload: Codable, Sendable, Equatable {
         case lastAssistantMessage = "last_assistant_message"
         case agentId = "agent_id"
         case agentType = "agent_type"
+        case permissionSuggestions = "permission_suggestions"
         case rateLimits = "rate_limits"
         case contextWindow = "context_window"
     }
@@ -144,7 +147,7 @@ public struct HookPayload: Codable, Sendable, Equatable {
         load(\.toolName, .toolName); load(\.toolInput, .toolInput); load(\.toolUseId, .toolUseId)
         load(\.prompt, .prompt); load(\.source, .source); load(\.reason, .reason)
         load(\.lastAssistantMessage, .lastAssistantMessage)
-        load(\.agentId, .agentId); load(\.agentType, .agentType)
+        load(\.agentId, .agentId); load(\.agentType, .agentType); load(\.permissionSuggestions, .permissionSuggestions)
         load(\.rateLimits, .rateLimits); load(\.contextWindow, .contextWindow)
         // `model` is a string in hooks but an object ({id, display_name}) in the status line.
         if let v = try? c.decodeIfPresent(JSONValue.self, forKey: DynamicKey(CodingKeys.model.rawValue)) {
@@ -162,6 +165,8 @@ public struct HookPayload: Codable, Sendable, Equatable {
         p.lastAssistantMessage = cut(lastAssistantMessage)
         p.reason = cut(reason)
         p.toolInput = toolInput?.truncatingStrings(to: maxChars)
+        // Never truncate a suggested rule (a clipped command would be a different rule): keep it whole or drop it.
+        if let s = permissionSuggestions, ((try? JSONEncoder().encode(s).count) ?? Int.max) > 8_000 { p.permissionSuggestions = nil }
         return p
     }
 }
@@ -205,7 +210,9 @@ public enum PermissionDecision: String, Codable, Sendable {
 public struct HookReply: Codable, Sendable, Equatable {
     public var decision: PermissionDecision
     public var reason: String?
-    public init(decision: PermissionDecision, reason: String? = nil) {
-        self.decision = decision; self.reason = reason
+    /// Permission updates to apply with an allow (`hookSpecificOutput.decision.updatedPermissions`).
+    public var updatedPermissions: [JSONValue]?
+    public init(decision: PermissionDecision, reason: String? = nil, updatedPermissions: [JSONValue]? = nil) {
+        self.decision = decision; self.reason = reason; self.updatedPermissions = updatedPermissions
     }
 }

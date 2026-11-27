@@ -42,6 +42,15 @@ public struct PermissionBroker {
         return true
     }
 
+    /// Allows the request and adds its suggested rule to the session (`updatedPermissions`), so the same command is
+    /// not asked again until the session ends. `rule` comes from `PendingPermission.sessionRule`.
+    @discardableResult
+    public mutating func answerAllowForSession(_ session: String, rule: JSONValue) -> Bool {
+        guard let s = sinks.removeValue(forKey: session) else { return false }
+        s.send(HookReply(decision: .allow, updatedPermissions: [rule]))
+        return true
+    }
+
     /// The hook went away on its own (timeout, Ctrl-C, answered in the terminal): forget it without replying.
     public mutating func peerClosed(_ session: String, sink: any ReplySink) {
         if let current = sinks[session], current === sink { sinks[session] = nil }

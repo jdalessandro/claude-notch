@@ -5,7 +5,9 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, deny, open, nextPage, previousPage, refreshQuota, openSettings }
+    enum Action: Sendable {
+        case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings, focusSubagents
+    }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -19,6 +21,19 @@ struct AllowIntent: LiveActivityIntent {
     init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(.allow, sessionId, requestId)
+        return .result()
+    }
+}
+
+/// "Allow for session": allows this request and adds Claude Code's suggested rule for the rest of the session.
+struct AllowSessionIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Allow for this session"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.allowSession, sessionId, requestId)
         return .result()
     }
 }
@@ -48,6 +63,19 @@ struct OpenSessionIntent: LiveActivityIntent {
     }
 }
 
+/// Asks the app to feature a request as the full card (whole command, branch, risk) before it is answered.
+struct ReviewIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Review request"
+    @Parameter(title: "Session") var sessionId: String
+    @Parameter(title: "Request") var requestId: String
+    init() {}
+    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.review, sessionId, requestId)
+        return .result()
+    }
+}
+
 /// Pages through the island's session list (a Live Activity can't scroll). The app owns the page number.
 struct PageIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "Change page"
@@ -56,6 +84,19 @@ struct PageIntent: LiveActivityIntent {
     init(forward: Bool) { self.forward = forward }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "")
+        return .result()
+    }
+}
+
+/// Shows (or, tapped again or with an empty session, hides) a session's subagent tree in place of the session list.
+/// The app owns which session is focused.
+struct FocusSubagentsIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Show subagents"
+    @Parameter(title: "Session") var sessionId: String
+    init() {}
+    init(sessionId: String) { self.sessionId = sessionId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.focusSubagents, sessionId, "")
         return .result()
     }
 }

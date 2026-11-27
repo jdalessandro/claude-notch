@@ -16,6 +16,15 @@ extension EnvironmentValues {
     }
 }
 
+private struct IslandStaleKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// True when the system reports the activity as stale: the app stopped updating it.
+    var islandStale: Bool {
+        get { self[IslandStaleKey.self] }
+        set { self[IslandStaleKey.self] = newValue }
+    }
+}
+
 private struct ScaledFont: ViewModifier {
     @Environment(\.islandScale) private var scale
     let size: CGFloat
@@ -41,40 +50,70 @@ enum Island {
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
-    static let badgeRed = Color(red: 1.0, green: 0.27, blue: 0.23)  // the system badge red
+    /// The palette is semantic: each hue means one thing, and nothing else borrows it.
+    ///   orange  `waiting`  waiting for you (permission, question, input)
+    ///   blue    `review`   a finished turn ready for review
+    ///   grey    `running`  working (it moves with the `pulse` beat instead of changing colour)
+    ///   red     `danger`   negative: Deny, failed, destructive, a nearly full limit
+    ///   green   `allow`    positive: the Allow / Confirm buttons, nothing else
+    ///   coral   brand: the robot logo only
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
     static let robotLight = Color(red: 0.933, green: 0.604, blue: 0.486)  // #EE9A7C
     static let robotShadow = Color(red: 0.663, green: 0.333, blue: 0.227)  // #A9553A
-    static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
-    static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
-    static let red = Color(red: 1.0, green: 0.27, blue: 0.23)
-    static let blue = Color(red: 0.25, green: 0.56, blue: 1.0)
+    /// 9.9:1 on black, and clearly apart from `danger`'s red.
+    static let waiting = Color(red: 1.0, green: 0.60, blue: 0.15)
+    static let review = Color(red: 0.25, green: 0.56, blue: 1.0)
+    static let running = Color.white.opacity(0.7)
+    static let danger = Color(red: 1.0, green: 0.27, blue: 0.23)
+    static let allow = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let secondary = Color.white.opacity(0.55)
-    static let tertiary = Color.white.opacity(0.35)
+    /// 5.3:1 on the black island and on `surface` (WCAG 1.4.3 needs 4.5:1 for 11pt text).
+    static let tertiary = Color.white.opacity(0.5)
     static let surface = Color.white.opacity(0.08)
     /// Cards inside the island. Near-concentric with the island's ~22pt corner across its ~16pt margin (strictly
     /// concentric would be ~6pt, which reads boxy at card size); nested boxes step down again (`innerRadius`).
     static let panelRadius: CGFloat = 12
     static let innerRadius: CGFloat = 8
 
-    static func quota(_ f: Double) -> Color { f >= 0.9 ? red : f >= 0.75 ? amber : blue }
-    static func context(_ f: Double) -> Color { f > 0.85 ? red : f > 0.65 ? amber : coral }
+    /// Meters are neutral until they are filling up (orange from 75 % / 65 %, red from 90 % / 85 %).
+    static let meter = Color.white.opacity(0.85)
+    static func quota(_ f: Double) -> Color { f >= 0.9 ? danger : f >= 0.75 ? waiting : meter }
+    static func context(_ f: Double) -> Color { f > 0.85 ? danger : f > 0.65 ? waiting : meter }
+    /// The danger levels, where the hue shift to red also gets a "!" so colour is not the only cue (WCAG 1.4.1).
+    static func quotaDanger(_ f: Double) -> Bool { f >= 0.9 }
+    static func contextDanger(_ f: Double) -> Bool { f > 0.85 }
+
+    /// A duration as VoiceOver should say it: "1 minute 14 seconds", "2 hours 4 minutes".
+    static func spoken(_ seconds: TimeInterval, maxUnits: Int = 2) -> String {
+        let f = DateComponentsFormatter()
+        f.unitsStyle = .full
+        f.allowedUnits = [.day, .hour, .minute, .second]
+        f.maximumUnitCount = maxUnits
+        f.zeroFormattingBehavior = .dropAll
+        return f.string(from: max(1, seconds)) ?? ""
+    }
+    /// "82% used, resets in 2 hours 4 minutes".
+    static func quotaValue(_ f: Double, _ reset: Date?, now: Date = .now) -> String {
+        let used = "\(Int((f * 100).rounded()))% used"
+        guard let reset, reset > now else { return used }
+        return used + ", resets in " + spoken(reset.timeIntervalSince(now))
+    }
 }
 
 extension NotchActivityState.Phase {
-    /// The waveform's colour: coral while agents work, amber when you are needed.
-    var waveTint: Color { self == .needsYou ? Island.amber : Island.coral }
+    /// The waveform's colour: grey while agents work, orange when you are needed.
+    var waveTint: Color { self == .needsYou ? Island.waiting : Island.running }
 }
 
 extension NotchActivityState.Kind {
     var tint: Color {
         switch self {
-        case .approval, .question, .input: Island.amber
-        case .failed: Island.red
-        case .review: Island.green
-        case .working: Island.coral
+        case .approval, .question, .input: Island.waiting
+        case .failed: Island.danger
+        case .review: Island.review
+        case .working: Island.running
         case .idle: Color.white.opacity(0.3)
         }
     }
@@ -158,10 +197,10 @@ struct RobotView: View {
 }
 
 /// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
-/// the waveform carries that, and the round red badge counts sessions waiting for review.
+/// the waveform carries that, and the small blue badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
-    /// Finished sessions waiting for review; a round red count on the robot's top right, like an app-icon badge.
+    /// Finished sessions waiting for review; a small blue count on the robot's top right.
     var badge = 0
     var body: some View {
         // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
@@ -175,13 +214,16 @@ struct Artwork: View {
                 if badge > 0 {
                     Text(badge > 9 ? "9+" : "\(badge)")
                         .font(.system(size: d * 0.62, weight: .bold, design: .rounded)).monospacedDigit()
-                        .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
+                        .foregroundStyle(.black).minimumScaleFactor(0.7).lineLimit(1)
                         .frame(minWidth: d, minHeight: d)
                         .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
-                        .background(Capsule().fill(Island.badgeRed))
+                        .background(Capsule().fill(Island.review))
                         .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("NotchBot")
+            .accessibilityValue(badge > 0 ? "\(badge) ready to review" : "")
     }
 }
 
@@ -199,6 +241,8 @@ struct AgentWave: View {
     let tint: Color
     var pulse = 0
     var height: CGFloat = 18
+    /// What VoiceOver says; derived from the counts when nil.
+    var label: String? = nil
     static let maxBars = 7
     static let minBars = 5
 
@@ -210,6 +254,10 @@ struct AgentWave: View {
     }
 
     var body: some View {
+        bars.accessibilityElement(children: .ignore).accessibilityLabel(spokenLabel)
+    }
+
+    @ViewBuilder private var bars: some View {
         let main = min(agents, Self.maxBars)
         let subs = min(subagents, Self.maxBars - main)
         if main + subs == 0 {
@@ -237,45 +285,78 @@ struct AgentWave: View {
             .animation(.easeInOut(duration: 0.9), value: pulse)
         }
     }
+
+    private var spokenLabel: String {
+        if let label { return label }
+        if agents + subagents == 0 { return "No agents working" }
+        var s = "\(agents) agent\(agents == 1 ? "" : "s") working"
+        if subagents > 0 { s += ", \(subagents) subagent\(subagents == 1 ? "" : "s")" }
+        return s
+    }
 }
 
 extension AgentWave {
-    /// Bars for the working sessions and their subagents. When nothing runs but something waits on you, one amber bar
+    /// Bars for the working sessions and their subagents. When nothing runs but something waits on you, one orange bar
     /// per waiting session keeps the island visibly asking.
     init(state: NotchActivityState, height: CGFloat = 18) {
         let agents = state.working > 0 ? state.working : (state.phase == .needsYou ? state.needsYou : 0)
+        let waiting = state.working == 0 && state.phase == .needsYou
         self.init(
-            agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, pulse: state.pulse, height: height)
+            agents: agents, subagents: state.subagentsRunning, tint: state.phase.waveTint, pulse: state.pulse, height: height,
+            label: waiting ? "\(agents) waiting for you" : nil)
     }
 }
 
 // MARK: - Buttons
 
-/// A pill button label. `filled` uses the tint as the fill with white text; otherwise a quiet translucent fill.
+/// A pill button label. `filled` uses the tint as the fill with black text (white fails contrast on green and red);
+/// otherwise a quiet translucent fill. A white fill is the neutral primary action; green is only for Allow, red only
+/// for confirming a destructive one. The tap target is at least 24pt tall whatever the scale (WCAG 2.5.8).
 struct Pill: View {
     let title: String
     var tint: Color = .white
     var filled = false
+    /// Tinted text on a faint wash of the tint: a secondary action that carries a meaning (red for destructive).
+    var wash = false
     var height: CGFloat = 32
     var stretch = true
     @Environment(\.islandScale) private var k
     var body: some View {
         let h = height * k
         Text(title).font(.system(size: h * 0.42, weight: .semibold)).lineLimit(1)
-            .foregroundStyle(filled ? Color.white : tint == .white ? Color.white : tint)
+            .foregroundStyle(filled ? Color.black : tint == .white ? Color.white : tint)
             .padding(.horizontal, h * 0.45)
             .frame(maxWidth: stretch ? .infinity : nil, minHeight: h, maxHeight: h)
-            .background(Capsule().fill(filled ? tint : Color.white.opacity(0.14)))
-            .contentShape(Capsule())
+            .background(Capsule().fill(filled ? tint : wash ? tint.opacity(0.18) : Color.white.opacity(0.14)))
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
     }
 }
 
 // MARK: - Badges
 
+/// A working session's elapsed time, "4:07". `Text(_, style: .timer)` takes whatever width it is offered and redraws in
+/// place, so a fixed frame made it ghost ("0:39" over "0:3") or clip once the digits changed width. This one sizes to a
+/// hidden template (monospaced digits, so every value is as wide as the template) and counts in minutes past the hour
+/// ("75:12") instead of growing an extra "h:" group. Past 99 minutes it shrinks a little rather than overflow.
+struct ElapsedTimer: View {
+    let since: Date
+    var body: some View {
+        Text("00:00").hidden()
+            .overlay {
+                Text(timerInterval: since...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
+                    .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .monospacedDigit().lineLimit(1)
+    }
+}
+
 /// A small capsule label. `tinted` uses the colour for text on a faint wash of it; neutral is grey on grey.
 struct Badge<Label: View>: View {
     var tint: Color? = nil
     var icon: String? = nil
+    /// A flexible badge truncates its text to the space it is given instead of claiming its full width.
+    var flexible = false
     @ViewBuilder var label: Label
     @Environment(\.islandScale) private var k
     var body: some View {
@@ -283,17 +364,17 @@ struct Badge<Label: View>: View {
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize()
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize(horizontal: !flexible, vertical: true)
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
-        .fixedSize()
+        .fixedSize(horizontal: !flexible, vertical: true)
     }
 }
 
 extension Badge where Label == Text {
-    init(_ text: String, tint: Color? = nil, icon: String? = nil) {
-        self.init(tint: tint, icon: icon) { Text(text) }
+    init(_ text: String, tint: Color? = nil, icon: String? = nil, flexible: Bool = false) {
+        self.init(tint: tint, icon: icon, flexible: flexible) { Text(text) }
     }
 }
 
@@ -302,14 +383,23 @@ extension Badge where Label == Text {
 struct Stat<Glyph: View, Value: View>: View {
     var label: String
     var tint: Color? = nil
+    /// False in a tight row: the pill keeps its glyph and value and drops the dim label.
+    var showLabel = true
+    /// What VoiceOver says; the visible value and label when nil.
+    var spoken: String? = nil
     @ViewBuilder var glyph: Glyph
     @ViewBuilder var value: Value
     @Environment(\.islandScale) private var k
     var body: some View {
+        content.accessibilityElement(children: spoken == nil ? .combine : .ignore)
+            .accessibilityLabel(spoken ?? "")
+    }
+
+    private var content: some View {
         HStack(spacing: 4 * k) {
             glyph.foregroundStyle(tint ?? Color.white.opacity(0.6))
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
-            Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
+            if showLabel { Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.55)) }
         }
         .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
@@ -319,14 +409,19 @@ struct Stat<Glyph: View, Value: View>: View {
 }
 
 extension Stat where Value == Text {
-    init(value: String, label: String, tint: Color? = nil, @ViewBuilder glyph: () -> Glyph) {
-        self.init(label: label, tint: tint, glyph: glyph) { Text(value) }
+    init(
+        value: String, label: String, tint: Color? = nil, showLabel: Bool = true, spoken: String? = nil,
+        @ViewBuilder glyph: () -> Glyph
+    ) {
+        self.init(label: label, tint: tint, showLabel: showLabel, spoken: spoken, glyph: glyph) { Text(value) }
     }
 }
 
 extension Stat where Glyph == EmptyView {
-    init(label: String, tint: Color? = nil, @ViewBuilder value: () -> Value) {
-        self.init(label: label, tint: tint, glyph: { EmptyView() }, value: value)
+    init(
+        label: String, tint: Color? = nil, showLabel: Bool = true, spoken: String? = nil, @ViewBuilder value: () -> Value
+    ) {
+        self.init(label: label, tint: tint, showLabel: showLabel, spoken: spoken, glyph: { EmptyView() }, value: value)
     }
 }
 
@@ -342,7 +437,16 @@ struct Ring: View {
             Circle().trim(from: 0, to: max(0.04, min(1, fraction))).stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
+        .overlay {
+            // Not colour alone: a "!" in the ring at the danger level.
+            if Island.contextDanger(fraction) {
+                Image(systemName: "exclamationmark").font(.system(size: 6 * k, weight: .black)).foregroundStyle(tint)
+            }
+        }
         .frame(width: size * k, height: size * k)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Context")
+        .accessibilityValue("\(Int((fraction * 100).rounded()))% used")
     }
 }
 
@@ -357,21 +461,32 @@ struct PromptPanel: View {
             HStack(spacing: 6) {
                 Text(p.session).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                 Spacer(minLength: 6)
+                // Neutral: the orange border already says this is waiting on you.
+                if p.isQuestion {
+                    Badge("Question", icon: "questionmark.bubble.fill")
+                } else {
+                    Badge(p.subagent.map { "\($0) asks" } ?? "Needs approval", icon: "lock.fill")
+                }
+            }
+            HStack(spacing: 6) {
+                if let b = p.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
                 if p.isQuestion {
                     if let h = p.header { Badge(h) }
-                    Badge("Question", tint: Island.amber, icon: "questionmark.bubble.fill")
                 } else {
                     Badge(p.tool, icon: "terminal.fill")
-                    Badge(p.subagent == nil ? "Needs approval" : "Subagent asks", tint: Island.amber, icon: "lock.fill")
                 }
+                Spacer(minLength: 0)
+                if p.destructive { Badge("Destructive", tint: Island.danger, icon: "exclamationmark.triangle.fill") }
             }
             if p.isQuestion { question } else { permission }
             actions
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.amber.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
+        .overlay(
+            RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                .strokeBorder(Island.waiting.opacity(0.6), lineWidth: 1))
     }
 
     private var question: some View {
@@ -380,13 +495,9 @@ struct PromptPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !p.options.isEmpty {
                 // Read-only: the answer is given in Claude itself.
-                HStack(spacing: 5) {
-                    ForEach(p.options, id: \.self) { o in
-                        Text(o).sfont(size: 12, weight: .medium).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
-                            .padding(.horizontal, 9).padding(.vertical, 4)
-                            .background(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
-                    }
-                    if p.moreOptions > 0 { Badge("+\(p.moreOptions)") }
+                HStack(spacing: 6) {
+                    Text(p.options.joined(separator: " · ") + (p.moreOptions > 0 ? "  +\(p.moreOptions)" : ""))
+                        .sfont(size: 12, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if p.multiSelect { Badge("Choose any") }
                     if p.moreQuestions > 0 { Badge("+\(p.moreQuestions) more") }
@@ -396,32 +507,68 @@ struct PromptPanel: View {
     }
 
     private var permission: some View {
-        Text(p.text).sfont(size: 12.5, weight: .medium, design: .monospaced).foregroundStyle(.white.opacity(0.92))
-            .lineLimit(2).padding(.horizontal, 10).padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(p.text).sfont(size: 12.5, weight: .medium, design: .monospaced).foregroundStyle(.white.opacity(0.92))
+                .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
+    /// The only place an approval is answered. Positive is green, negative is red, as users expect: red-tinted Deny on the left, green-tinted Allow on
+    /// the right, on the same wash. A destructive request keeps those colours (the red "Destructive" pill carries the
+    /// danger) but makes Allow a two-step: "Allow", then "Confirm" for a few seconds. "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
+                let short = p.isQuestion ? "Answer in Claude" : "Approve in terminal"
+                ViewThatFits(in: .horizontal) {
+                    Text("\(short): NotchBot can't answer this one").lineLimit(1)
+                    Text(short).lineLimit(1)
+                }
+                .sfont(size: 12).foregroundStyle(Island.secondary)
+                Spacer(minLength: 8)
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
-                    Pill(title: "Open", tint: Island.coral, filled: true, height: 30)
+                    Pill(title: "Open", tint: .white, filled: true, height: 26, stretch: false)
                 }
-                Text(p.isQuestion ? "Answer it in Claude" : "Answer it in your terminal").sfont(size: 12)
-                    .foregroundStyle(Island.secondary).frame(maxWidth: .infinity)
+                .accessibilityLabel("Open \(p.session)")
             } else if p.isQuestion {
-                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) { Pill(title: "Not now", height: 30) }
-                Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 30)
-                }
-            } else {
+                Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Deny", tint: Island.red, height: 30)
+                    Pill(title: "Skip", height: 26, stretch: false)
                 }
+                .accessibilityLabel("Not now: \(p.session)")
+                Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                    Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
+                }
+                .accessibilityLabel("Answer in Claude: \(p.session)")
+            } else {
+                if p.confirming {
+                    Text("Confirm to run it · reverts in \(Int(AllowConfirmation.timeout))s").sfont(size: 11, weight: .medium)
+                        .foregroundStyle(Island.secondary).lineLimit(1)
+                } else if let scope = p.sessionScope {
+                    // Quiet secondary option: a text link, not a third button. Names exactly what it covers.
+                    Button(intent: AllowSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                        Text("Allow “\(scope)” for this session").sfont(size: 11, weight: .medium)
+                            .foregroundStyle(Island.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 8)
+                Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
+                    Pill(title: "Deny", tint: Island.danger, wash: true, height: 26, stretch: false)
+                }
+                .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Allow", tint: Island.green, filled: true, height: 30)
+                    // Same wash as Deny in every state (red and green on the same 18 % background); only the word changes when a destructive Allow is armed.
+                    Pill(title: p.confirming ? "Confirm" : "Allow", tint: Island.allow, wash: true, height: 26, stretch: false)
                 }
+                .accessibilityLabel(
+                    p.confirming
+                        ? "Confirm allowing the destructive command \(Island.target(p.tool, p.text))"
+                        : p.destructive
+                            ? "Allow destructive command \(Island.target(p.tool, p.text)), asks to confirm"
+                            : "Allow \(Island.target(p.tool, p.text))")
             }
         }
         .buttonStyle(.plain)
@@ -430,27 +577,34 @@ struct PromptPanel: View {
 
 // MARK: - Session cards
 
-/// One session in two lines: name, branch and status; then what it is doing, with its actions or stats beside it.
+/// One session in three lines: its name; then branch and status; then what it is doing, with its actions or stats beside it.
 struct SessionRow: View {
     let row: NotchActivityState.Row
+    /// Whether the subagent pill opens the subagent tree.
+    var tree = false
     @Environment(\.islandScale) private var k
     var body: some View {
         // Live Activities don't deliver taps to a button hidden behind other content, so the tappable regions are the
         // visible header and detail text themselves; the actions on the right keep their own buttons.
         VStack(alignment: .leading, spacing: 5) {
-            Button(intent: OpenSessionIntent(sessionId: row.id)) {
-                HStack(spacing: 6) {
-                    if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-                            .layoutPriority(1)
-                    }
-                    if let b = row.branch { Badge(b, icon: "arrow.triangle.branch") }
-                    Spacer(minLength: 6)
-                    status
+            if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                    Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel(row.spokenSummary)
+                .accessibilityHint("Opens the session")
             }
-            .buttonStyle(.plain)
+            // As much of the stats as fits beside the branch: full, then without labels, then without the lines.
+            ViewThatFits(in: .horizontal) {
+                badgeLine(labels: true, lines: true)
+                badgeLine(labels: false, lines: true)
+                badgeLine(labels: false, lines: false)
+            }
+            // VoiceOver: the name carries the whole header (name, status, branch, stats, detail) and opens the session;
+            // the badges are hidden so nothing is read twice, except when the subagent pill is its own button.
+            .accessibilityHidden(!(tree && row.subagentTotal > 0) && !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             HStack(spacing: 5) {
                 Button(intent: OpenSessionIntent(sessionId: row.id)) {
                     Text(row.detail)
@@ -460,6 +614,7 @@ struct SessionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityHidden(true)
                 trailing
             }
         }
@@ -467,62 +622,83 @@ struct SessionRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                .fill(row.kind.needsYou ? Island.amber.opacity(0.10) : Island.surface))
+                .fill(Island.surface)
+        )
+        .overlay {
+            if row.kind == .review {
+                RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                    .strokeBorder(Island.review.opacity(0.5), lineWidth: 1)
+            }
+        }
     }
 
     @ViewBuilder private var status: some View {
         if row.kind == .working, let since = row.since {
-            Badge(tint: Island.coral) {
-                Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36 * k)
+            Badge {
+                ElapsedTimer(since: since)
             }
+        } else if row.kind == .approval, row.destructive {
+            Badge("Destructive", tint: Island.danger, icon: "exclamationmark.triangle.fill")
         } else {
-            Badge(row.status, tint: row.kind == .idle ? nil : row.kind.tint)
+            Badge(row.status, tint: row.kind == .idle || row.kind == .working ? nil : row.kind.tint)
         }
     }
 
-    /// Actions for a session waiting on you; otherwise its stats as badges.
+    /// What a session waiting on you offers on its detail line. Rows never answer: a request goes to the card
+    /// ("Review"), anything else opens the session. Both are quiet neutral pills, so no row looks like a decision.
     @ViewBuilder private var trailing: some View {
         HStack(spacing: 5) {
             switch row.kind {
-            case .approval:
+            case .approval, .question:
                 if let r = row.requestId {
-                    Button(intent: DenyIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Deny", tint: Island.red, height: 24, stretch: false)
+                    Button(intent: ReviewIntent(sessionId: row.id, requestId: r)) {
+                        Pill(title: "Review", tint: .white, height: 24, stretch: false)
                     }
-                    Button(intent: AllowIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Allow", tint: Island.green, filled: true, height: 24, stretch: false)
-                    }
+                    .accessibilityLabel("Review \(row.kind == .question ? "question" : "request") from \(row.name)")
+                    .accessibilityHint("Shows it in the main card, where you can answer")
                 } else {
                     openButton
                 }
-            case .question:
-                Button(intent: OpenSessionIntent(sessionId: row.id, requestId: row.requestId ?? "")) {
-                    Pill(title: "Answer", tint: Island.coral, filled: true, height: 24, stretch: false)
-                }
             case .input, .failed: openButton
-            case .review:
+            case .review, .working, .idle:
                 EmptyView()
-            case .working, .idle:
+            }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    private func badgeLine(labels: Bool, lines: Bool) -> some View {
+        HStack(spacing: 6) {
+            if let b = row.branch { Badge(b, icon: "arrow.triangle.branch", flexible: true) }
+            Spacer(minLength: 6)
+            stats(labels: labels, lines: lines)
+            status
+        }
+    }
+
+    /// A working or idle session's stats as badges, beside its status.
+    @ViewBuilder private func stats(labels: Bool, lines: Bool) -> some View {
+        HStack(spacing: 5) {
+            if row.kind == .working || row.kind == .idle {
                 if row.subagentTotal > 0 {
-                    let running = row.subagents > 0
-                    Stat(
-                        value: "\(running ? row.subagents : row.subagentTotal)",
-                        label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
-                        tint: running ? Island.coral : nil
-                    ) {
-                        Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+                    if tree {
+                        Button(intent: FocusSubagentsIntent(sessionId: row.id)) { subagentPill(labels: labels) }
+                            .accessibilityLabel("\(row.subagents > 0 ? "\(row.subagents) running" : "\(row.subagentTotal) done") subagents")
+                            .accessibilityHint("Shows what each subagent is doing")
+                    } else {
+                        subagentPill(labels: labels)
                     }
                 }
-                if row.linesAdded + row.linesRemoved > 0 {
-                    Stat(label: "lines") {
-                        Text("+\(row.linesAdded)").foregroundStyle(Island.green)
-                            + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
+                if lines, row.linesAdded + row.linesRemoved > 0 {
+                    Stat(label: "lines", showLabel: labels, spoken: "\(row.linesAdded) lines added, \(row.linesRemoved) removed") {
+                        Text("+\(row.linesAdded)") + Text(" −\(row.linesRemoved)").foregroundStyle(Island.secondary)
                     }
                 }
-                // Neutral until the window is filling up (amber > 65 %, red > 85 %).
+                // Neutral until the window is filling up (orange > 65 %, red > 85 %).
                 if let ctx = row.context {
                     let full = ctx > 0.65
-                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil) {
+                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil, showLabel: labels) {
                         Ring(fraction: ctx, tint: full ? Island.context(ctx) : Color.white.opacity(0.8))
                     }
                 }
@@ -532,9 +708,164 @@ struct SessionRow: View {
         .fixedSize()
     }
 
+    private func subagentPill(labels: Bool) -> some View {
+        let running = row.subagents > 0
+        return Stat(
+            value: "\(running ? row.subagents : row.subagentTotal)",
+            label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
+            tint: nil, showLabel: labels
+        ) {
+            Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+        }
+    }
+
     private var openButton: some View {
         Button(intent: OpenSessionIntent(sessionId: row.id)) {
-            Pill(title: "Open", tint: Island.coral, filled: true, height: 24, stretch: false)
+            Pill(title: "Open", tint: .white, height: 24, stretch: false)
+        }
+        .accessibilityLabel("Open \(row.name)")
+    }
+}
+
+extension Island {
+    /// "Bash: npm install…" for an Allow / Deny label: the tool and the start of what it wants to do.
+    static func target(_ tool: String?, _ text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clipped = t.count > 60 ? String(t.prefix(60)) + "…" : t
+        guard let tool, !tool.isEmpty else { return clipped }
+        return clipped.isEmpty ? tool : "\(tool): \(clipped)"
+    }
+}
+
+extension NotchActivityState.Row {
+    /// What VoiceOver reads for the header: name, status, branch, stats, then the detail line.
+    var spokenSummary: String {
+        var parts: [String] = []
+        if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(name) }
+        if kind == .working, let since {
+            parts.append("Working for " + Island.spoken(Date.now.timeIntervalSince(since)))
+        } else {
+            parts.append(status)
+        }
+        if let branch { parts.append("branch \(branch)") }
+        if kind == .working || kind == .idle {
+            if subagentTotal > 0 {
+                parts.append(
+                    subagents > 0
+                        ? "\(subagents) subagent\(subagents == 1 ? "" : "s") running"
+                        : "\(subagentTotal) subagent\(subagentTotal == 1 ? "" : "s") done")
+            }
+            if linesAdded + linesRemoved > 0 { parts.append("\(linesAdded) lines added, \(linesRemoved) removed") }
+            if let context { parts.append("Context \(Int(context * 100))% used") }
+        }
+        if !detail.isEmpty { parts.append(detail) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Subagent tree
+
+/// One session's subagents, in place of the session list: the main agent, then each subagent on a line with its type,
+/// state, current tool and elapsed time. A subagent waiting on you is orange. Fixed line count (the island clips).
+struct SubagentTree: View {
+    let focus: NotchActivityState.Focus
+    @Environment(\.islandScale) private var k
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button(intent: FocusSubagentsIntent(sessionId: "")) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left").sfont(size: 9, weight: .bold)
+                        Text("Back").sfont(size: 11, weight: .semibold)
+                    }
+                    .foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 8 * k).padding(.vertical, 3 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.14))).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Back to sessions")
+                Text(focus.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                Spacer(minLength: 4)
+                Button(intent: FocusSubagentsIntent(sessionId: "")) {
+                    Stat(
+                        value: "\(focus.running > 0 ? focus.running : focus.total)",
+                        label: focus.running > 0 ? (focus.running == 1 ? "subagent" : "subagents") : "done",
+                        tint: nil, showLabel: true
+                    ) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+                    }
+                }
+                .buttonStyle(.plain).accessibilityLabel("Hide subagents")
+            }
+            ForEach(focus.lines) { line in
+                TreeLineView(line: line, last: line.id == focus.lines.last?.id && focus.more == 0)
+            }
+            if focus.more > 0 {
+                HStack(spacing: 6) {
+                    Text("└").sfont(size: 12, design: .monospaced).foregroundStyle(Island.tertiary).frame(width: 12 * k)
+                    Text("+\(focus.more) more").sfont(size: 11.5, weight: .medium).foregroundStyle(Island.secondary)
+                }
+                .accessibilityLabel("\(focus.more) more subagents")
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
+        .overlay {
+            if focus.lines.contains(where: { $0.state == .waiting }) {
+                RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                    .strokeBorder(Island.waiting.opacity(0.45), lineWidth: 1)
+            }
+        }
+    }
+}
+
+struct TreeLineView: View {
+    let line: NotchActivityState.TreeLine
+    let last: Bool
+    @Environment(\.islandScale) private var k
+
+    private var tint: Color {
+        switch line.state {
+        case .running: Island.running
+        case .waiting: Island.waiting
+        case .done: Island.secondary
+        case .failed: Island.danger
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Connector: the main agent is the root (no glyph); subagents hang off it (├ siblings, └ the last).
+            Text(line.id == 0 ? "" : last ? "└" : "├").sfont(size: 12, design: .monospaced)
+                .foregroundStyle(Island.tertiary).frame(width: 12 * k)
+            indicator
+            Text(line.name).sfont(size: 12, weight: .semibold).foregroundStyle(line.state == .waiting ? Island.waiting : .white)
+                .lineLimit(1).fixedSize()
+            Text(line.detail).sfont(size: 11.5).foregroundStyle(line.state == .waiting ? Island.waiting.opacity(0.9) : Island.secondary)
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            elapsed.sfont(size: 11, weight: .medium).monospacedDigit().foregroundStyle(
+                line.state == .waiting ? Island.waiting : Island.tertiary
+            )
+            .lineLimit(1).fixedSize()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.accessibilityLabel())
+    }
+
+    @ViewBuilder private var indicator: some View {
+        switch line.state {
+        case .running: Circle().fill(tint).frame(width: 6 * k, height: 6 * k)
+        case .waiting: Image(systemName: "lock.fill").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        case .done: Image(systemName: "checkmark").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        case .failed: Image(systemName: "xmark").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        }
+    }
+
+    /// A running line counts up by itself (no pushes); a finished one shows how long it took.
+    @ViewBuilder private var elapsed: some View {
+        if let since = line.since {
+            Text(since, style: .timer).multilineTextAlignment(.trailing)
+        } else if let took = line.took {
+            Text(Fmt.duration(TimeInterval(took)))
         }
     }
 }
@@ -552,49 +883,77 @@ struct Footer: View {
         // One line, always: the pager never drops below the limits. When it gets tight the bars and then the type
         // shrink, but the bars stay visible.
         ViewThatFits(in: .horizontal) {
+            row(bar: 40, size: 11, icon: true, words: true)
             row(bar: 40, size: 11, icon: true)
             row(bar: 28, size: 11, icon: true)
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false)
+            // Tightest: the dots always win. Reset times go first, then 24pt targets at any scale.
+            row(bar: 16, size: 10, icon: false, resets: false)
+            row(bar: 12, size: 9.5, icon: false, resets: false, compact: true)
         }
         .padding(.horizontal, 4)
     }
 
-    private func row(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
-        HStack(spacing: 8) {
-            limits(bar: bar, size: size, icon: icon)
-            refresh
+    private func row(
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, compact: Bool = false
+    )
+        -> some View
+    {
+        HStack(spacing: compact ? 6 : 8) {
+            limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
+            refresh(compact: compact)
             Spacer(minLength: 0)
-            pager
+            pager(compact: compact)
         }
     }
 
-    /// Sits right after the limits it refreshes, not after the pager.
-    private var refresh: some View {
-        Button(intent: RefreshQuotaIntent()) {
-            Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-                .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
-                .contentShape(Circle())
+    /// Sits right after the limits it refreshes, not after the pager. Orange with an exclamation when the last refresh
+    /// failed, bright while one is running.
+    private func refresh(compact: Bool) -> some View {
+        let note = state.limitsNote
+        let d = compact ? 24 : 22 * k
+        return Button(intent: RefreshQuotaIntent()) {
+            Image(systemName: note == .failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.clockwise")
+                .sfont(size: 10, weight: .bold)
+                .foregroundStyle(note == .failed ? Island.waiting : note == .refreshing ? .white : .white.opacity(0.85))
+                .frame(width: d, height: d)
+                .background(Circle().fill(Color.white.opacity(note == .refreshing ? 0.2 : 0.12)))
+                .frame(minWidth: 24, minHeight: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private var pager: some View {
-        if state.pages > 1 { Pager(state: state).fixedSize() }
+    @ViewBuilder private func pager(compact: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, compact: compact).fixedSize() }
     }
 
-    private func limits(bar: CGFloat, size: CGFloat, icon: Bool) -> some View {
-        HStack(spacing: 9) {
-            if let f = state.fiveHour { limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, hm: true) }
-            if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon) }
+    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
+        if state.limitsUnknown {
+            // Never vanish silently: say that there is nothing to show (nothing at all for an account without plan windows).
+            if let text = Island.unavailableText(state.limitsNote) {
+                Text(text).sfont(size: size, weight: .medium).foregroundStyle(Island.tertiary).lineLimit(1).fixedSize()
+            }
+        } else {
+            HStack(spacing: 9) {
+                if let f = state.fiveHour {
+                    limit("5h", f, resets ? state.fiveHourReset : nil, bar: bar, size: size, icon: icon, words: words, hm: true)
+                }
+                if let w = state.weekly {
+                    limit("7d", w, resets ? state.weeklyReset : nil, bar: bar, size: size, icon: icon, words: words)
+                }
+            }
         }
     }
 
     /// "5h ▬▬ 44% 🕒2h": the window, a bar, the percentage, and how long until it resets in one short unit.
     private func limit(
-        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, hm: Bool = false
+        _ label: String, _ f: Double, _ reset: Date?, bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false,
+        hm: Bool = false
     )
         -> some View
     {
@@ -605,21 +964,41 @@ struct Footer: View {
                     Capsule().fill(Island.quota(f)).frame(width: max(7 * k, bar * k * min(1, f)), height: 7 * k)
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
+            if Island.quotaDanger(f) {
+                Image(systemName: "exclamationmark").sfont(size: size - 1, weight: .black).foregroundStyle(Island.danger)
+            }
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
-                HStack(spacing: 2) {
-                    if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
-                    Text(left)
+                if words {
+                    Text("· resets \(left)").foregroundStyle(Island.tertiary)
+                } else {
+                    HStack(spacing: 2) {
+                        if icon { Image(systemName: "clock").sfont(size: 9, weight: .semibold) }
+                        Text(left)
+                    }
+                    .foregroundStyle(Island.tertiary)
                 }
-                .foregroundStyle(Island.tertiary)
             }
         }
         .monospacedDigit()
         .sfont(size: size, weight: .semibold)
         .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label == "5h" ? "5-hour limit" : "Weekly limit")
+        .accessibilityValue(Island.quotaValue(f, reset))
     }
 }
 
 extension Island {
+    /// What the footer says in place of the limits when neither window is known. Nil: say nothing.
+    static func unavailableText(_ note: NotchActivityState.LimitsNote?) -> String? {
+        switch note {
+        case .refreshing: "Refreshing limits…"
+        case .failed: "Couldn't load limits"
+        case .notApplicable: nil
+        case nil: "Limits unavailable"
+        }
+    }
+
     /// Time until `date` in one short unit: "45m", "3h", "4d". Nil once it has passed.
     static func shortUntil(_ date: Date, hm: Bool = false, now: Date = .now) -> String? {
         let s = date.timeIntervalSince(now)
@@ -648,26 +1027,43 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
+    /// Tight: the arrows are 24pt buttons whatever the scale (the least that is still a target).
+    var compact = false
+    /// At most this many dots are drawn; past it they are a window that follows the current page.
+    private static let maxDots = 8
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
+                .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
-                ForEach(0..<min(state.pages, 8), id: \.self) { i in
+                ForEach(dotWindow, id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
                         .frame(width: (i == state.page ? 12 : 5) * k, height: 5 * k)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: state.page)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Page \(state.page + 1) of \(state.pages)")
             Button(intent: PageIntent(forward: true)) { arrow("chevron.right") }
+                .accessibilityLabel("Next page")
         }
         .buttonStyle(.plain)
         .fixedSize()
     }
 
+    /// The pages that get a dot: all of them up to the cap, else a window of the cap that keeps the current page in view.
+    private var dotWindow: Range<Int> {
+        let n = min(state.pages, Self.maxDots)
+        let start = max(0, min(state.page - n / 2, state.pages - n))
+        return start..<(start + n)
+    }
+
     private func arrow(_ symbol: String) -> some View {
-        Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12))).contentShape(Circle())
+        let d = compact ? 24 : 22 * k
+        return Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
+            .frame(width: d, height: d).background(Circle().fill(Color.white.opacity(0.12)))
+            .frame(minWidth: 24, minHeight: 24).contentShape(Rectangle())
     }
 }
 
@@ -689,9 +1085,12 @@ struct IslandTitle: View {
 struct IslandHeadline: View {
     let state: NotchActivityState
     var body: some View {
-        Text(state.sessions == 0 ? "All quiet" : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents")
-            .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-            .fixedSize()
+        Text(
+            state.sessions == 0
+                ? (state.hooksMissing ? "Not watching" : "All quiet") : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents"
+        )
+        .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+        .fixedSize()
     }
 }
 
@@ -709,8 +1108,8 @@ struct IslandBadges: View {
 
     private func badges(working: Bool, subagents: Bool) -> some View {
         HStack(spacing: 6) {
-            if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
-            if working, state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
+            if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.waiting) }
+            if working, state.working > 0 { Badge("\(state.working) working") }
             if subagents, state.subagentsRunning > 0 {
                 Badge(
                     "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
@@ -729,18 +1128,30 @@ struct SettingsGear: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("NotchBot settings")
     }
 }
 
 /// Everything under the header.
 struct IslandBody: View {
     let state: NotchActivityState
+    @Environment(\.islandStale) private var stale
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
-            ForEach(state.rows) { SessionRow(row: $0) }
+            if let f = state.focus { SubagentTree(focus: f) }
+            ForEach(state.rows) { SessionRow(row: $0, tree: state.subagentTree) }
             Footer(state: state).padding(.top, 4)
         }
+    }
+}
+
+/// Shown when the system marks the activity stale: the numbers below may be out of date.
+struct StaleNotice: View {
+    var body: some View {
+        Label("Paused — open NotchBot to refresh", systemImage: "pause.circle.fill")
+            .sfont(size: 11, weight: .medium).foregroundStyle(Island.waiting).lineLimit(1).padding(.horizontal, 4)
     }
 }
 
@@ -748,9 +1159,13 @@ struct IslandBody: View {
 /// Used by the island's bottom region, the banner presentation and snapshots.
 struct IslandExpanded: View {
     let state: NotchActivityState
+    @Environment(\.islandStale) private var stale
     var body: some View {
         if state.sessions == 0 {
-            IslandIdle(state: state)
+            VStack(alignment: .leading, spacing: 8) {
+                if stale { StaleNotice() }
+                IslandIdle(state: state)
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 IslandTitle(state: state).padding(.horizontal, 4)
@@ -769,9 +1184,27 @@ struct IslandIdle: View {
     /// False on the island, where "All quiet" already sits up beside the cutout (and the compact view shows the logo).
     var header = true
     @Environment(\.islandScale) private var k
+    @Environment(\.islandStale) private var stale
     var body: some View {
         VStack(alignment: .leading, spacing: header ? 12 : 8) {
-            if !header {
+            if stale && !header { StaleNotice() }
+            if state.hooksMissing {
+                // "All quiet" would be a lie: with no hooks NotchBot cannot see any session.
+                Button(intent: OpenSettingsIntent()) {
+                    HStack(spacing: 12) {
+                        if header { Artwork(size: 32 * k) }
+                        VStack(alignment: .leading, spacing: 2) {
+                            if header { Text("Not watching").sfont(size: 16, weight: .semibold).foregroundStyle(.white) }
+                            Label("Hooks not installed — open Settings", systemImage: "gearshape.fill")
+                                .sfont(size: 13, weight: .medium).foregroundStyle(Island.waiting)
+                        }
+                        .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 4).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else if !header {
                 Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)
                     .lineLimit(1).padding(.horizontal, 4)
             } else {
@@ -803,6 +1236,9 @@ struct IslandIdle: View {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
+                if Island.quotaDanger(f) {
+                    Image(systemName: "exclamationmark").sfont(size: 13, weight: .black).foregroundStyle(Island.danger)
+                }
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
                     .monospacedDigit().lineLimit(1).fixedSize()
             }
@@ -822,13 +1258,17 @@ struct IslandIdle: View {
             .sfont(size: 11).foregroundStyle(Island.tertiary).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(Island.quotaValue(f, reset))
     }
 }
 
-/// The compact presentation: the logo on the left of the cutout, the waveform on the right.
+/// The compact presentation: the logo on the left of the cutout, on the right the waveform, or, when something needs
+/// you, a hand glyph and how many (shape and number, so it never relies on colour alone).
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: Island.compactIcon, badge: state.reviews) }
+    var body: some View { Artwork(size: Island.compactIcon, badge: state.compactReviews) }
 }
 
 struct IslandCompactTrailing: View {
@@ -836,6 +1276,38 @@ struct IslandCompactTrailing: View {
     var body: some View {
         // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
         let h = Island.compactIcon * Island.compactWaveRatio
-        AgentWave(state: state, height: h).frame(width: 30, height: h)
+        if state.needsYou > 0 {
+            HStack(spacing: 2) {
+                Image(systemName: "hand.raised.fill").font(.system(size: 11, weight: .bold))
+                Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 12, weight: .bold, design: .rounded))
+                    .monospacedDigit().minimumScaleFactor(0.7).lineLimit(1)
+            }
+            .foregroundStyle(Island.waiting).frame(width: 30, height: Island.compactIcon)
+        } else {
+            AgentWave(state: state, height: h).frame(width: 30, height: h)
+        }
     }
+}
+
+/// The minimal presentation (another Live Activity owns the island): the logo, or when something needs you the hand
+/// glyph with the count.
+struct IslandMinimal: View {
+    let state: NotchActivityState
+    var body: some View {
+        if state.needsYou > 0 {
+            HStack(spacing: 1) {
+                Image(systemName: "hand.raised.fill").font(.system(size: 9, weight: .bold))
+                Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 10, weight: .bold, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(Island.waiting).frame(width: Island.compactIcon, height: Island.compactIcon)
+        } else {
+            Artwork(size: Island.compactIcon, badge: state.compactReviews)
+        }
+    }
+}
+
+extension NotchActivityState {
+    /// Review count for the logo's badge; second priority, so it steps aside while anything needs you.
+    var compactReviews: Int { needsYou > 0 ? 0 : reviews }
 }
