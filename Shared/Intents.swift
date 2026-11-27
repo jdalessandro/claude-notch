@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 enum IntentBridge {
     enum Action: Sendable {
-        case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings, focusSubagents
+        case allow, allowSession, deny, open, review, nextPage, previousPage, nextNeedPage, refreshQuota, openSettings, focusSubagents
     }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
@@ -84,6 +84,16 @@ struct PageIntent: LiveActivityIntent {
     init(forward: Bool) { self.forward = forward }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "")
+        return .result()
+    }
+}
+
+/// Jumps to the next page that holds a session waiting on the user (the footer's "waiting on other pages" hint).
+struct NeedPageIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Go to the page waiting for you"
+    init() {}
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.nextNeedPage, "", "")
         return .result()
     }
 }

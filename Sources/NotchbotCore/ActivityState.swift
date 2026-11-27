@@ -119,6 +119,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     public var reviews = 0
     /// Sessions that need you (not just a finished turn to review) on pages other than the one shown.
     public var offPageNeed = 0
+    /// The nearest page after the shown one (wrapping) that holds a session waiting on you; nil when `offPageNeed` is 0.
+    public var needPage: Int?
     /// Why the limits are missing or not current; nil when they are simply shown. Absent from the payload when nil.
     public var limitsNote: LimitsNote?
     /// True when NotchBot's hooks are not installed, so "no sessions" cannot be told apart from "not watching".
@@ -204,6 +206,10 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             sessionScope: p.canAnswer && p.sessionRule != nil && !p.destructive ? p.sessionScope.map { clip($0, 28) } : nil)
     }
 
+    /// A session waiting for an answer (approval, question, input, or a failure to look at), as opposed to a finished
+    /// turn to review. Every such session is also counted in the header's `needsYou`.
+    static func waitingOnYou(_ s: AgentSession) -> Bool { s.status.needsAttention }
+
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
@@ -230,7 +236,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             s.weeklyReset = quota?.sevenDay?.resetsAt
             return s
         }
-        let needs = active.filter { $0.status.needsAttention || $0.needsReview }
+        let needs = active.filter { waitingOnYou($0) || $0.needsReview }
         let working = active.filter { $0.status == .working || $0.status == .compacting }
         // Answerable requests first: those are the ones the island can settle.
         // A request the user asked to see in full ("Review") takes the card while it is still live.
@@ -253,9 +259,20 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
                 tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil,
                 destructive: s.pending?.destructive ?? false, truncated: (s.pending?.commandLength ?? 0) > CommandRisk.inlineLimit)
         }
-        // Sessions that need an answer (not just a review) and sit on another page than the one shown.
-        let shown = Set(rows.map(\.id))
-        let offPage = rest.filter { $0.status.needsAttention && !shown.contains($0.id) }.count
+        // Sessions waiting on you (`waitingOnYou`, a subset of the header's `needsYou`) that sit on another page.
+        // The featured prompt's session is not in `rest`, and while a subagent tree replaces the rows nothing is
+        // "on another page", so the hint stays quiet in both cases.
+        let focusing = focus.flatMap { id in active.first { $0.id == id && !$0.subagents.isEmpty } } != nil
+        var offPage = 0
+        var needPage: Int?
+        if !focusing {
+            for step in 1..<max(pages, 1) {
+                let p = (current + step) % pages
+                let n = rest.dropFirst(p * limit).prefix(limit).filter(waitingOnYou).count
+                offPage += n
+                if n > 0, needPage == nil { needPage = p }
+            }
+        }
         // A focused session's subagent tree replaces the session rows. A session that is gone or has no subagents
         // falls back to the list (the app then drops the focus).
         let focused = focus.flatMap { id in active.first { $0.id == id && !$0.subagents.isEmpty } }.map {
@@ -273,7 +290,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: focused == nil ? Array(rows) : [],
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
-            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage, focus: focused)
+            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage, needPage: needPage, focus: focused)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

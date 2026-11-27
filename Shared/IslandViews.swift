@@ -1001,8 +1001,15 @@ struct Pager: View {
     var body: some View {
         HStack(spacing: 5) {
             if state.offPageNeed > 0 {
-                Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.amber)
-                    .lineLimit(1).fixedSize().padding(.trailing, 3)
+                let n = state.offPageNeed
+                Button(intent: NeedPageIntent()) {
+                    // The long form where the footer has room (the dots are shown); the short one in the tightest footer.
+                    Text(dots ? "\(n) waiting on other pages" : "\(n) waiting")
+                        .sfont(size: 11, weight: .semibold).foregroundStyle(Island.amber)
+                        .lineLimit(1).fixedSize().padding(.trailing, 3).frame(minHeight: 24).contentShape(Rectangle())
+                }
+                .accessibilityLabel(
+                    "\(n) session\(n == 1 ? "" : "s") waiting for you on other pages, go to the next")
             }
             Text("\(state.page + 1)/\(state.pages)").sfont(size: 11, weight: .medium).monospacedDigit()
                 .foregroundStyle(Island.secondary).lineLimit(1).fixedSize()
