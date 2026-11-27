@@ -37,6 +37,26 @@ enum IslandSnapshots {
             write(expanded(st), dir.appendingPathComponent("\(name).png"))
         }
         write(expanded(working, stale: true), dir.appendingPathComponent("expanded-stale.png"))
+        // Every size step of the cards that crowd first, at the island's real width. A step whose content is wider than
+        // the island is reported (and fails the run), so an overflow can't slip in unseen.
+        let byKind: [(String, [AgentSession])] = [
+            ("working", busy(sessions)),
+            ("permission", sessions.filter { $0.pending?.isQuestion != true }),
+            ("question", sessions),
+        ]
+        var overflows: [String] = []
+        for size in Preferences.IslandSize.allCases {
+            for (kind, subset) in byKind {
+                var st = NotchActivityState.make(sessions: subset, quota: quota, maxRows: size.maxRows)
+                st.scale = size.scale
+                if kind != "question" { write(expanded(st), dir.appendingPathComponent("expanded-\(kind)-\(size.title.lowercased()).png")) }
+                let w = contentWidth(of: st)
+                if w > Self.bodyWidth + 0.5 {
+                    overflows.append(
+                        "\(kind) at \(size.title) (\(size.scale)x): content \(Int(w.rounded(.up)))pt, island \(Int(Self.bodyWidth))pt")
+                }
+            }
+        }
         // A session's subagent tree in place of the list: without a request card, and under one (an amber subagent).
         let working3 = sessions.filter { $0.pending == nil }
         let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "infra-tools")
@@ -53,11 +73,44 @@ enum IslandSnapshots {
             write(compact(st), dir.appendingPathComponent("\(name).png"))
         }
         print("wrote snapshots to \(dir.path)")
+        if !overflows.isEmpty {
+            print("OVERFLOW: content is wider than the island:\n  " + overflows.joined(separator: "\n  "))
+            exit(1)
+        }
+    }
+
+    /// The expanded island's width and what is left for the cards: the system draws the island at a fixed width (about
+    /// 440pt on the notch Macs, measured from screenshots of the real island at both large steps, which are the same
+    /// width at every size) and insets the bottom region by about 14pt a side before `Island.inset` is added.
+    static let width: CGFloat = 440
+    static let systemMargin: CGFloat = 14
+    static var bodyWidth: CGFloat { width - 2 * (Island.inset + systemMargin) }
+
+    /// Two sessions that are only working (no request), with timers of different widths: 0:39 and past the hour.
+    private static func busy(_ sessions: [AgentSession]) -> [AgentSession] {
+        guard var a = sessions.first(where: { $0.id == "payments-api" }) else { return [] }
+        a.pending = nil
+        a.status = .working
+        a.gitBranch = "claude/island-colours"
+        a.workingSince = Date().addingTimeInterval(-39)
+        var b = a
+        b.id = "web-dashboard-2"
+        b.cwd = "/Users/you/code/web-dashboard-2"
+        b.gitBranch = "claude/waiting-input-status"
+        b.workingSince = Date().addingTimeInterval(-(3600 + 12 * 60 + 3))
+        return [a, b]
+    }
+
+    /// The width the island's content asks for when offered `bodyWidth`: more than that means it overflows.
+    private static func contentWidth(of st: NotchActivityState) -> CGFloat {
+        let v = IslandBody(state: st).islandScale(st.scale).environment(\.colorScheme, .dark)
+        return NSHostingController(rootView: v).sizeThatFits(in: CGSize(width: bodyWidth, height: 4000)).width
     }
 
     private static func expanded(_ st: NotchActivityState, stale: Bool = false) -> some View {
-        IslandExpanded(state: st).environment(\.islandStale, stale).islandScale(st.scale).padding(.horizontal, 20).padding(.top, 22)
-            .padding(.bottom, 20).frame(width: 400)
+        IslandExpanded(state: st).environment(\.islandStale, stale).islandScale(st.scale)
+            .padding(.horizontal, Island.inset + systemMargin).padding(.top, 22)
+            .padding(.bottom, 20).frame(width: width)
             .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(.black))
             .padding(24).background(Color(white: 0.35))
             .environment(\.colorScheme, .dark)
