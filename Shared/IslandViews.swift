@@ -41,6 +41,7 @@ enum Island {
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
+    static let badgeRed = Color(red: 1.0, green: 0.27, blue: 0.23)  // the system badge red
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -157,21 +158,28 @@ struct RobotView: View {
 }
 
 /// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
-/// the waveform and an amber badge carry that.
+/// the waveform carries that, and the round red badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
+    /// Finished sessions waiting for review; a round red count on the robot's top right, like an app-icon badge.
     var badge = 0
     var body: some View {
+        // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
+        // that sticks out of the view's frame.
+        let d = size * 0.8  // badge diameter
+        let pad = badge > 0 ? d * 0.4 : 0
         RobotView()
             .frame(width: size, height: size)
-            // Kept inside the frame: the compact region clips anything that sticks out.
+            .padding(.top, pad).padding(.trailing, pad)
             .overlay(alignment: .topTrailing) {
                 if badge > 0 {
-                    Text("\(badge)").font(.system(size: max(8, size * 0.36), weight: .bold, design: .rounded))
-                        .foregroundStyle(.black).monospacedDigit()
-                        .padding(.horizontal, size * 0.08).frame(minWidth: size * 0.5, minHeight: size * 0.5)
-                        .background(Capsule().fill(Island.amber))
-                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, size * 0.07)))
+                    Text(badge > 9 ? "9+" : "\(badge)")
+                        .font(.system(size: d * 0.62, weight: .bold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
+                        .frame(minWidth: d, minHeight: d)
+                        .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
+                        .background(Capsule().fill(Island.badgeRed))
+                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
     }
