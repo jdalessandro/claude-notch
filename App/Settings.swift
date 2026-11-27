@@ -138,14 +138,13 @@ struct IslandSizePicker: View {
                 value: Binding(
                     get: { Double(size.rawValue) },
                     set: { size = Preferences.IslandSize(rawValue: Int($0.rounded())) ?? .standard }),
-                in: 0...steps, step: 1)
-            ZStack {
-                Text(size.title).fontWeight(.semibold).foregroundStyle(.primary)
-                HStack {
-                    Text("Smaller")
-                    Spacer()
-                    Text("Larger")
-                }
+                in: 0...steps, step: 1
+            ) { EmptyView() }
+            .labelsHidden().frame(maxWidth: .infinity)
+            HStack {
+                Text("Smaller")
+                Spacer()
+                Text("Larger")
             }
             .font(.caption).foregroundStyle(.secondary)
         }
