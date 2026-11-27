@@ -237,7 +237,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         // A request the user asked to see in full ("Review") takes the card while it is still live.
         let chosen = featuredRequestId.flatMap { id in active.first { $0.pending?.id.uuidString == id } }
         let featured = chosen ?? active.first { $0.pending?.canAnswer == true } ?? active.first { $0.pending != nil }
-        let prompt = featured.flatMap { prompt(for: $0, confirming: confirming) }
+        let prompt = featured.flatMap { Self.prompt(for: $0, confirming: confirming) }
         let limit = prompt == nil ? maxRows : min(maxRows, maxRowsWithPrompt)
         let rest = active.filter { $0.id != featured?.id }
         // Pages wrap around, so "next" on the last page returns to the first.
