@@ -60,6 +60,8 @@ rests as dots when nothing runs.
 - A Mac running **macOS 27.3 or later** (Live Activities on the Mac). Best on a notched MacBook Pro.
 - **Claude Code** (CLI and/or the Claude desktop app's Code tab).
 
+**Using it with fullscreen apps:** macOS hides the menu bar in fullscreen, and the island goes with it. To keep the island always visible, set System Settings > Control Center > "Automatically hide and show the menu bar" to **Never**. NotchBot asks about this once on first launch, and *Settings ▸ General ▸ Fullscreen* shows the current state with a button that opens the pane. NotchBot never changes this setting itself.
+
 That's all. Releases are signed with a Developer ID and notarized, so you don't need Xcode or an Apple developer account.
 
 ## Install
@@ -114,6 +116,7 @@ Open **Settings…** from the menu-bar icon, or press ⌘, while the app is acti
 | Setting | Default | What it does |
 |---|---|---|
 | **Island size** | Default | A five-step slider: *Smaller*, *Small*, *Default*, *Large*, *Larger*. Scales the island's text and icons (88% to 125%). *Large* and *Larger* show two session cards per page instead of three. |
+| **Menu bar in fullscreen** | n/a | Shows whether macOS is set to never hide the menu bar, which keeps the island visible in fullscreen apps. **Open System Settings** jumps to the pane; NotchBot only reads this setting. |
 | **Raise the island when something needs you** | On | Also raises the island when a turn finishes with a result to review. Permission requests, questions, sessions waiting for input and failed turns always raise it. |
 | **Forget idle sessions after** | 12 hours | 1 hour, 4 hours, 12 hours or 1 day. An idle session drops off the island after this long. |
 
@@ -250,6 +253,7 @@ Open from the menu-bar icon, the island's **⋯ ▸ Settings…**, or ⌘, while
 |---|---|
 | Nothing appears | Is the app running (menu-bar robot)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
+| Island disappears in a fullscreen app | macOS hides the menu bar there, and the island with it. Set System Settings ▸ Control Center ▸ "Automatically hide and show the menu bar" to **Never** (*Settings ▸ General ▸ Fullscreen* opens the pane). |
 | Island missing | Quit and reopen NotchBot. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
 | Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
 | No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, NotchBot leaves it alone. |
