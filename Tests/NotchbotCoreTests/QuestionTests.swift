@@ -80,9 +80,15 @@ import Testing
         #expect(p.canChoose && p.requestId == s.pending?.id.uuidString)
         #expect(p.choices.map(\.label) == ["Postgres", "SQLite", "DynamoDB"])
         #expect(p.choices.map(\.detail) == ["Relational", "", "Managed NoSQL"])
-        // A tall card: no session rows and no pager under it; the header still counts everyone.
-        #expect(st.rows.isEmpty && st.pages == 1 && st.needsYou == 2)
+        // A tall card: no session rows under it, and the others sit on the next page; the header counts everyone.
+        #expect(st.rows.isEmpty && st.pages == 2 && st.more == 1 && st.needsYou == 2)
         #expect(st.encodedSize <= NotchActivityState.byteBudget)
+        let next = NotchActivityState.make(sessions: [s, other], quota: nil, page: 1)
+        #expect(next.prompt == nil && next.rows.map(\.id) == ["s2"])
+        let back = NotchActivityState.make(sessions: [s, other], quota: nil, page: 2)  // pages wrap
+        #expect(back.prompt?.canChoose == true && back.rows.isEmpty)
+        // The island never turns away from the question by itself.
+        #expect(!IslandGuard.canAutoTurn(state: st, promptChangedAt: .distantPast))
     }
 
     @Test func longChoicesAreClippedAndStayInTheBudget() throws {
@@ -101,6 +107,16 @@ import Testing
         let multi = Self.db.replacingOccurrences(of: #""multiSelect":false"#, with: #""multiSelect":true"#)
         let m = try #require(NotchActivityState.make(sessions: [try asking(multi)], quota: nil).prompt)
         #expect(!m.canChoose && m.choices.isEmpty && !m.options.isEmpty)
+    }
+
+    @Test func aQuestionLetThroughToClaudeSaysSo() throws {
+        var t = SessionStore()
+        t.apply(ev("UserPromptSubmit") { $0.prompt = "go" })
+        t.apply(
+            ev("PreToolUse") {
+                $0.toolName = "AskUserQuestion"; $0.toolInput = try! input(Self.db)
+            })
+        #expect(try #require(t.sessions["s1"]).activity == "Waiting for your answer in Claude")
     }
 
     @Test func theBrokerDeliversTheChosenLabelOnce() throws {

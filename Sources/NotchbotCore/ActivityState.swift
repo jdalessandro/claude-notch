@@ -3,7 +3,9 @@ import Foundation
 extension AgentSession {
     /// One-line description of what the session is doing right now.
     public var activity: String {
-        switch status {
+        // The question was let through to Claude's own prompt ("Other…"): say so rather than naming the tool.
+        if status == .working, currentTool == AskedQuestion.toolName { return "Waiting for your answer in Claude" }
+        return switch status {
         case .working:
             mainTurnEnded && runningSubagents > 0
                 ? "Waiting on \(runningSubagents) subagent\(runningSubagents == 1 ? "" : "s")" : (currentToolDetail ?? "Thinking…")
@@ -255,9 +257,14 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         let dedicated = prompt?.canChoose == true
         let rest = active.filter { $0.id != featured?.id }
         // Pages wrap around, so "next" on the last page returns to the first.
-        let pages = dedicated ? 1 : max(1, (rest.count + limit - 1) / limit)
+        // Under a dedicated question card, page 0 is the card alone and the pages after it are the other sessions.
+        let pages = dedicated ? 1 + (rest.count + maxRows - 1) / maxRows : max(1, (rest.count + limit - 1) / limit)
         let current = ((page % pages) + pages) % pages
-        let rows = rest.dropFirst(current * limit).prefix(dedicated ? 0 : limit).map { s -> Row in
+        let pageRest: ArraySlice<AgentSession> =
+            dedicated
+            ? (current == 0 ? [] : rest.dropFirst((current - 1) * maxRows).prefix(maxRows))
+            : rest.dropFirst(current * limit).prefix(limit)
+        let rows = pageRest.map { s -> Row in
             let k = kind(of: s)
             return Row(
                 id: s.id, name: clip(s.displayTitle, 32), kind: k, detail: clip(detail(of: s, kind: k), 90),
@@ -282,7 +289,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             }
         return NotchActivityState(
             phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
-            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: focused == nil ? Array(rows) : [],
+            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: dedicated && current > 0 ? nil : prompt,
+            rows: focused == nil ? Array(rows) : [],
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
             pages: pages, reviews: active.filter(\.needsReview).count, focus: focused)

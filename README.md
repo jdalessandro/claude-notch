@@ -85,8 +85,8 @@ It opens by itself when something needs you (and on a finished result, if you li
   brings its request up. A destructive command (`rm -rf`, force-push, `sudo`, ...) keeps green **Allow** / red **Deny** but asks you to tap Allow twice (**Allow**, then **Confirm**).
 - **Questions.** When Claude asks you something, the card lists its choices (numbered, with Claude's descriptions) and
   a tap answers Claude, no switching windows. **Other…** jumps to the session to type your own answer, **Skip**
-  dismisses it. While a question card is up it has the island to itself; the other sessions come back when you answer
-  or skip. Questions with several parts or "choose any" are answered in Claude (**Answer in Claude**).
+  dismisses it. While a question card is up it has the island to itself: a line says how many sessions wait behind it,
+  and the arrows page to them and back. Questions with several parts or "choose any" are answered in Claude (**Answer in Claude**).
 - **Every session at a glance.** Name, branch, elapsed time, the prompt that started the turn, the current tool,
   context usage, lines changed and token count. Click a session to jump to the app it runs in.
 - **A subagent tree.** Each session lists its subagents (what each is doing, tool-call counts, last result). A session

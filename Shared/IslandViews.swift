@@ -1184,6 +1184,11 @@ struct IslandBody: View {
         VStack(alignment: .leading, spacing: 10) {
             if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
+            // The question card has the island to itself: say what waits behind it (the pager below reaches it).
+            if let p = state.prompt, p.canChoose, state.more > 0 {
+                Text("+\(state.more) more session\(state.more == 1 ? "" : "s"): use the arrows to see \(state.more == 1 ? "it" : "them")")
+                    .sfont(size: 11, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1).padding(.horizontal, 4)
+            }
             if let f = state.focus { SubagentTree(focus: f) }
             ForEach(state.rows) { SessionRow(row: $0, tree: state.subagentTree) }
             Footer(state: state).padding(.top, 4)
