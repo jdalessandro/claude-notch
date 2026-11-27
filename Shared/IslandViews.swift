@@ -35,6 +35,10 @@ extension View {
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
     static let inset: CGFloat = 17
+    /// The logo in the compact island, and the waveform beside it, sized from it: the tallest bar is this fraction of
+    /// the logo's height, so the two always read as a pair.
+    static let compactIcon: CGFloat = 17
+    static let compactWaveRatio: CGFloat = 0.7
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
@@ -762,13 +766,14 @@ struct IslandIdle: View {
 /// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: 17) }
+    var body: some View { Artwork(size: Island.compactIcon) }
 }
 
 struct IslandCompactTrailing: View {
     let state: NotchActivityState
     var body: some View {
         // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
-        AgentWave(state: state, height: 12).frame(width: 30, height: 12)
+        let h = Island.compactIcon * Island.compactWaveRatio
+        AgentWave(state: state, height: h).frame(width: 30, height: h)
     }
 }

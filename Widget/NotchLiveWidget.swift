@@ -47,7 +47,7 @@ struct ClaudeNotchActivity: Widget {
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: 17)
+                Artwork(size: Island.compactIcon)
             }
             .keylineTint(Island.coral)
         }
