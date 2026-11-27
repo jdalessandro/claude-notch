@@ -117,6 +117,25 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// Finished sessions waiting for the user to review; shown as a badge on the logo. The app zeroes it when the
     /// setting is off, since the widget process can't read the app's settings.
     public var reviews = 0
+    /// Sessions that need you (not just a finished turn to review) on pages other than the one shown.
+    public var offPageNeed = 0
+    /// Why the limits are missing or not current; nil when they are simply shown. Absent from the payload when nil.
+    public var limitsNote: LimitsNote?
+    /// True when NotchBot's hooks are not installed, so "no sessions" cannot be told apart from "not watching".
+    public var hooksMissing = false
+
+    /// The state of the plan-limit fetch, set by the app.
+    public enum LimitsNote: String, Codable, Sendable {
+        /// A fetch is running.
+        case refreshing
+        /// The last fetch failed (any limits shown are the last known).
+        case failed
+        /// No limits exist for this account (an API-billed account has no plan windows), so none are promised.
+        case notApplicable
+    }
+
+    /// True when neither plan window is known.
+    public var limitsUnknown: Bool { fiveHour == nil && weekly == nil }
 
     /// Whether the waveform has bars to move.
     public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }
@@ -184,7 +203,17 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
-        featuredRequestId: String? = nil
+        featuredRequestId: String? = nil, limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
+    ) -> NotchActivityState {
+        var st = build(
+            sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: featuredRequestId)
+        st.limitsNote = limitsNote
+        st.hooksMissing = !hooksInstalled
+        return st
+    }
+
+    private static func build(
+        sessions: [AgentSession], quota: QuotaState?, maxRows: Int, page: Int, featuredRequestId: String?
     ) -> NotchActivityState {
         let active = sessions.filter { $0.status != .ended }
         guard !active.isEmpty else {
@@ -218,6 +247,9 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
                 tool: s.pending.map { clip($0.isQuestion ? "Question" : $0.toolName, 16) }, fromSubagent: s.pending?.agentId != nil,
                 destructive: s.pending?.destructive ?? false, truncated: (s.pending?.commandLength ?? 0) > CommandRisk.inlineLimit)
         }
+        // Sessions that need an answer (not just a review) and sit on another page than the one shown.
+        let shown = Set(rows.map(\.id))
+        let offPage = rest.filter { $0.status.needsAttention && !shown.contains($0.id) }.count
         let phase: Phase = !needs.isEmpty ? .needsYou : (!working.isEmpty ? .working : .done)
         let headline: String =
             switch phase {
@@ -230,7 +262,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
-            pages: pages, reviews: active.filter(\.needsReview).count)
+            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

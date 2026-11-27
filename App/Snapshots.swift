@@ -23,6 +23,20 @@ enum IslandSnapshots {
         var large = NotchActivityState.make(
             sessions: sessions.filter { $0.pending == nil }, quota: quota, maxRows: larger.maxRows)
         large.scale = larger.scale
+        var offPage = question
+        offPage.offPageNeed = 2
+        var noLimits = NotchActivityState.make(sessions: sessions.filter { $0.pending == nil }, quota: nil)
+        noLimits.page = 0
+        var failed = noLimits
+        failed.limitsNote = .failed
+        let hooksOff = NotchActivityState.make(sessions: [], quota: nil, hooksInstalled: false)
+        for (name, st) in [
+            ("expanded-off-page-need", offPage), ("expanded-limits-unavailable", noLimits),
+            ("expanded-limits-failed", failed), ("expanded-hooks-missing", hooksOff),
+        ] {
+            write(expanded(st), dir.appendingPathComponent("\(name).png"))
+        }
+        write(expanded(working, stale: true), dir.appendingPathComponent("expanded-stale.png"))
         for (name, st) in [
             ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
             ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),
@@ -35,8 +49,9 @@ enum IslandSnapshots {
         print("wrote snapshots to \(dir.path)")
     }
 
-    private static func expanded(_ st: NotchActivityState) -> some View {
-        IslandExpanded(state: st).islandScale(st.scale).padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 20).frame(width: 400)
+    private static func expanded(_ st: NotchActivityState, stale: Bool = false) -> some View {
+        IslandExpanded(state: st).environment(\.islandStale, stale).islandScale(st.scale).padding(.horizontal, 20).padding(.top, 22)
+            .padding(.bottom, 20).frame(width: 400)
             .background(RoundedRectangle(cornerRadius: 44, style: .continuous).fill(.black))
             .padding(24).background(Color(white: 0.35))
             .environment(\.colorScheme, .dark)
