@@ -304,6 +304,8 @@ final class AppModel {
     /// needing the user) holds the current page for `pageHold` instead.
     private var lastPageTurn = Date()
     private var pageHoldUntil = Date.distantPast
+    /// The session whose subagent tree the island shows instead of the session list; paging pauses while it is set.
+    private var focusedSession: String?
     private static let pageInterval: TimeInterval = 6
     private static let pageHold: TimeInterval = 20
 
@@ -315,7 +317,7 @@ final class AppModel {
     /// Called every second: turns to the next page when there is more than one and nobody is interacting.
     private func autoPage() {
         let now = Date()
-        guard let st = island.current, st.pages > 1, now >= pageHoldUntil,
+        guard let st = island.current, st.pages > 1, st.focus == nil, focusedSession == nil, now >= pageHoldUntil,
             now.timeIntervalSince(lastPageTurn) >= Self.pageInterval
         else { return }
         lastPageTurn = now
@@ -329,7 +331,8 @@ final class AppModel {
     func reconcile() {
         if snapshotOnly { return }
         var state = NotchActivityState.make(
-            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage)
+            sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: islandPage,
+            focus: prefs.showSubagents ? focusedSession : nil)
         state.scale = prefs.islandSize.scale
         func key(_ s: AgentSession) -> String { "\(s.id)|\(s.status.rawValue)|\(s.pending?.id.uuidString ?? "")" }
         let waiting = store.active.filter { $0.status.needsAttention || $0.needsReview }
@@ -343,12 +346,15 @@ final class AppModel {
         if alert != nil, state.page != 0 {
             islandPage = 0
             state = NotchActivityState.make(
-                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0)
+                sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: 0,
+                focus: prefs.showSubagents ? focusedSession : nil)
             state.scale = prefs.islandSize.scale
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
         if !prefs.showReviewBadge { state.reviews = 0 }
+        state.subagentTree = prefs.showSubagents
+        if state.focus == nil { focusedSession = nil }  // the session ended or has no subagents any more
         if !island.isLive, NSApp.isActive { island.ensureStarted(with: state) }  // starting needs the foreground
         if alert != nil { activityTrace("alert \(state.headline)") }
         island.push(state, alert: alert)
@@ -367,6 +373,12 @@ final class AppModel {
         case .nextPage, .previousPage:
             activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
+            focusedSession = nil
+            reconcile()
+            return
+        case .focusSubagents:
+            activityTrace("intent focus \(sessionId)")
+            focusedSession = prefs.showSubagents && !sessionId.isEmpty && sessionId != focusedSession ? sessionId : nil
             reconcile()
             return
         default: break
@@ -379,7 +391,7 @@ final class AppModel {
         case .allow, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
-        case .nextPage, .previousPage, .refreshQuota, .openSettings: break
+        case .nextPage, .previousPage, .refreshQuota, .openSettings, .focusSubagents: break
         }
     }
 
@@ -520,6 +532,33 @@ final class AppModel {
             e("SubagentStop", "payments-api", ago: 50) {
                 $0.agentId = "a2"; $0.lastAssistantMessage = "Added 6 tests in RetryTests.swift"
             })
+        // ...and two more running (Plan, then another general-purpose one), plus a finished one, so the tree has overflow
+        for (aid, type, desc, tool, input, ago) in [
+            ("a3", "Plan", "Plan the backoff changes", "Read", ["file_path": "Sources/Payments/Retry.swift"], 80.0),
+            ("a4", "general-purpose", "Update the client docs", "Edit", ["file_path": "docs/client.md"], 60.0),
+            ("a5", "Explore", "Check idempotency keys", "", [:], 170.0),
+        ] {
+            _ = store.apply(
+                e("PreToolUse", "payments-api") {
+                    $0.toolName = "Task"; $0.toolInput = .object(["description": .string(desc)])
+                })
+            _ = store.apply(
+                e("SubagentStart", "payments-api", ago: ago) {
+                    $0.agentId = aid; $0.agentType = type
+                })
+            if !tool.isEmpty {
+                _ = store.apply(
+                    e("PreToolUse", "payments-api") {
+                        $0.agentId = aid; $0.agentType = type; $0.toolName = tool
+                        $0.toolInput = .object(input.mapValues { .string($0) })
+                    })
+            } else {
+                _ = store.apply(
+                    e("SubagentStop", "payments-api", ago: 20) {
+                        $0.agentId = aid; $0.lastAssistantMessage = "Keys are set on every retry"
+                    })
+            }
+        }
         _ = store.apply(
             e("PreToolUse", "payments-api") {
                 $0.toolName = "Bash"; $0.toolInput = .object(["command": .string("swift test --filter Retry")])
@@ -535,6 +574,30 @@ final class AppModel {
                 $0.agentId = "w1"; $0.agentType = "general-purpose"; $0.toolName = "Bash";
                 $0.toolInput = .object(["command": .string("npm install --save-dev vitest")])
             })
+        for (aid, type, desc, tool, pattern, ago) in [
+            ("w2", "Explore", "Find the tooltip handlers", "Grep", "onHover", 30.0),
+            ("w3", "Plan", "Plan the fix", "", "", 38.0),
+        ] {
+            _ = store.apply(
+                e("PreToolUse", "web-dashboard") {
+                    $0.toolName = "Task"; $0.toolInput = .object(["description": .string(desc)])
+                })
+            _ = store.apply(
+                e("SubagentStart", "web-dashboard", ago: ago) {
+                    $0.agentId = aid; $0.agentType = type
+                })
+            if tool.isEmpty {
+                _ = store.apply(
+                    e("SubagentStop", "web-dashboard", ago: 8) {
+                        $0.agentId = aid; $0.lastAssistantMessage = "Reposition on resize"
+                    })
+            } else {
+                _ = store.apply(
+                    e("PreToolUse", "web-dashboard") {
+                        $0.agentId = aid; $0.agentType = type; $0.toolName = tool; $0.toolInput = .object(["pattern": .string(pattern)])
+                    })
+            }
+        }
         // api-gateway: Claude is asking the user a question
         _ = store.apply(e("UserPromptSubmit", "api-gateway") { $0.prompt = "Add an audit log for admin actions" })
         _ = store.apply(

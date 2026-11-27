@@ -23,7 +23,13 @@ enum IslandSnapshots {
         var large = NotchActivityState.make(
             sessions: sessions.filter { $0.pending == nil }, quota: quota, maxRows: larger.maxRows)
         large.scale = larger.scale
+        // A session's subagent tree in place of the list: without a request card, and under one (an amber subagent).
+        let working3 = sessions.filter { $0.pending == nil }
+        let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "payments-api")
+        let treeAsking = NotchActivityState.make(
+            sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, focus: "web-dashboard")
         for (name, st) in [
+            ("expanded-subagents", tree), ("expanded-subagents-permission", treeAsking),
             ("expanded-question", question), ("expanded-permission", permission), ("expanded-working", working),
             ("expanded-page-2", page2), ("expanded-idle", idle), ("expanded-larger", large),
         ] {
