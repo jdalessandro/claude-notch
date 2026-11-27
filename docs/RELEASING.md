@@ -19,10 +19,10 @@ before the slow part, so a mistake fails in seconds.
    it from Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates ▸ + ▸ *Developer ID Application*; it lands in your login keychain.
 2. **Notary credentials**, stored once in the keychain (use an app-specific password from account.apple.com):
    ```bash
-   xcrun notarytool store-credentials claude-notch --apple-id <your apple id> --team-id <TEAM_ID>
+   xcrun notarytool store-credentials notchbot --apple-id <your apple id> --team-id <TEAM_ID>
    ```
 3. **Signing team:** `echo <TEAM_ID> > .xcode-team` (already needed for `make bundle`).
-4. **GitHub:** `gh auth login` with a token that can push to this repo and `homebrew-tap`.
+4. **GitHub:** `gh auth login` with a token that can push to this repo and `homebrew-notchbot`.
 
 If Live Activities turn out to need a Developer ID provisioning profile, download one per bundle id and run with
 `APP_PROFILE=... WIDGET_PROFILE=... make release`.

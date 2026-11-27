@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import UserNotifications
 
 enum Notifier {

@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import Observation
 import UserNotifications
 
@@ -126,7 +126,7 @@ final class AppModel {
         } catch {
             lastError =
                 (error as? POSIXError)?.code == .EADDRINUSE
-                ? "Claude Notch is already running." : "Socket: \(error.localizedDescription)"
+                ? "Notchbot is already running." : "Socket: \(error.localizedDescription)"
         }
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -202,7 +202,7 @@ final class AppModel {
     }
 
     func answer(_ sessionId: String, _ decision: PermissionDecision) {
-        let reason = decision == .deny ? "Denied from Claude Notch" : nil
+        let reason = decision == .deny ? "Denied from Notchbot" : nil
         if broker.answer(sessionId, decision, reason: reason) {
             store.resolvePermission(sessionId, allowed: decision == .allow)
         } else {
@@ -369,14 +369,14 @@ final class AppModel {
     private func stableHookPath() throws -> String {
         let dest = Paths.supportDir.appendingPathComponent("bin", isDirectory: true)
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
-        let target = dest.appendingPathComponent("claude-notch-hook")
-        let sibling = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("claude-notch-hook")
+        let target = dest.appendingPathComponent("notchbot-hook")
+        let sibling = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("notchbot-hook")
         guard FileManager.default.fileExists(atPath: sibling.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "claude-notch-hook not found next to the app"])
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "notchbot-hook not found next to the app"])
         }
         // Copy beside the target, then swap in atomically: a hook firing mid-update must never find a missing or
         // half-copied binary. Also drop the quarantine flag so the copied helper isn't blocked by Gatekeeper.
-        let tmp = dest.appendingPathComponent(".claude-notch-hook.\(UUID().uuidString).tmp")
+        let tmp = dest.appendingPathComponent(".notchbot-hook.\(UUID().uuidString).tmp")
         try FileManager.default.copyItem(at: sibling, to: tmp)
         removexattr(tmp.path, "com.apple.quarantine", 0)
         if FileManager.default.fileExists(atPath: target.path) {
@@ -392,9 +392,9 @@ final class AppModel {
     /// whenever hooks or the status line are installed. Only our own helper file is touched, never the user's config.
     private func refreshInstalledForwarder() {
         guard hooksInstalled || statusLineInstalled else { return }
-        let target = Paths.supportDir.appendingPathComponent("bin/claude-notch-hook")
+        let target = Paths.supportDir.appendingPathComponent("bin/notchbot-hook")
         guard let exe = Bundle.main.executableURL else { return }
-        let bundled = exe.deletingLastPathComponent().appendingPathComponent("claude-notch-hook")
+        let bundled = exe.deletingLastPathComponent().appendingPathComponent("notchbot-hook")
         guard FileManager.default.fileExists(atPath: target.path), FileManager.default.fileExists(atPath: bundled.path),
             !FileManager.default.contentsEqual(atPath: bundled.path, andPath: target.path)
         else { return }
@@ -440,7 +440,7 @@ final class AppModel {
         let p = env.payload
         eventLog.append("\(p.hookEventName ?? "?") \(p.notificationType ?? "") \(p.toolName ?? "") \(p.sessionId?.prefix(6) ?? "")")
         if eventLog.count > 200 { eventLog.removeFirst(50) }
-        if prefs.logRawEvents || ProcessInfo.processInfo.environment["CLAUDE_NOTCH_LOG"] != nil,
+        if prefs.logRawEvents || ProcessInfo.processInfo.environment["NOTCHBOT_LOG"] != nil,
             let d = try? env.encodedLine()
         {
             let url = Paths.supportDir.appendingPathComponent("events.jsonl")

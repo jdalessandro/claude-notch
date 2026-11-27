@@ -93,7 +93,7 @@ func writeAll(fd: Int32, _ data: Data, deadline initialDeadline: Date, extendBy 
     }
 }
 
-// MARK: - Client (used by claude-notch-hook)
+// MARK: - Client (used by notchbot-hook)
 
 public enum NotchClient {
     /// Budget for connect + write. The hook runs inside the user's Claude session, so a wedged or absent
@@ -231,9 +231,9 @@ public final class NotchServer: @unchecked Sendable {
     private let handler: Handler
     private var listenFD: Int32 = -1
     private var source: DispatchSourceRead?
-    private let acceptQueue = DispatchQueue(label: "claude-notch.accept")
-    private let readQueue = DispatchQueue(label: "claude-notch.read", attributes: .concurrent)
-    private let deliverQueue = DispatchQueue(label: "claude-notch.deliver")  // serial: the single place handlers run
+    private let acceptQueue = DispatchQueue(label: "notchbot.accept")
+    private let readQueue = DispatchQueue(label: "notchbot.read", attributes: .concurrent)
+    private let deliverQueue = DispatchQueue(label: "notchbot.deliver")  // serial: the single place handlers run
 
     // Connections are read concurrently but delivered strictly in accept order.
     private let orderLock = NSLock()

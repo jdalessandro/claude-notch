@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 private final class FakeSink: ReplySink, @unchecked Sendable {
     private let lock = NSLock()

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 @Suite struct PayloadTests {
     func decode(_ json: String) throws -> HookPayload { try JSONDecoder().decode(HookPayload.self, from: Data(json.utf8)) }

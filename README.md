@@ -1,7 +1,7 @@
-# Claude Notch
+# Notchbot
 
-**A Dynamic-Island-style companion for [Claude Code](https://claude.com/claude-code) on MacBooks with a display cutout.**
-An independent project, not affiliated with or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
+**An unofficial notch companion for [Claude Code](https://claude.com/claude-code): a Dynamic-Island-style status display for MacBooks with a display cutout.**
+Notchbot is an independent, community project. It is not made by, affiliated with, or endorsed by Anthropic ([details](#trademarks-and-affiliation)).
 See every running agent at a glance, get told when something finishes or needs you, approve tool permissions
 without switching windows, and keep an eye on your plan limits. All of it lives around the notch.
 
@@ -53,17 +53,17 @@ That's all. Releases are signed with a Developer ID and notarized, so you don't 
 **Homebrew**
 
 ```bash
-brew install --cask jdalessandro/tap/claude-notch
+brew install --cask jdalessandro/notchbot/notchbot
 ```
 
 **One-line script** (downloads the latest release, checks its SHA-256, copies the app to `/Applications`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jdalessandro/claude-notch/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/jdalessandro/notchbot/main/scripts/install.sh | bash
 ```
 
-**Manual:** download `ClaudeNotch-<version>.dmg` from [Releases](https://github.com/jdalessandro/claude-notch/releases),
-open it and drag **ClaudeNotch** to Applications.
+**Manual:** download `Notchbot-<version>.dmg` from [Releases](https://github.com/jdalessandro/notchbot/releases),
+open it and drag **Notchbot** to Applications.
 
 > Releases are being set up; until the first one is published, [build from source](#build-from-source).
 
@@ -72,8 +72,8 @@ the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
 
 Then click **Install hooks** (in the Sessions window) (or *Settings ▸ Integration*), and restart any Claude sessions that were
 already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
-at `settings.json.claude-notch.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
-If you installed with Homebrew, run that in-app uninstall *before* `brew uninstall --cask claude-notch`: brew removes the
+at `settings.json.notchbot.bak`. To remove everything later: *Settings ▸ Integration ▸ Uninstall*.
+If you installed with Homebrew, run that in-app uninstall *before* `brew uninstall --cask notchbot`: brew removes the
 app but not the hooks it added to `~/.claude/settings.json`.
 
 **Just want to look around?** `make demo` launches the app with synthetic agents and no setup.
@@ -85,19 +85,19 @@ enough for local builds). Ad-hoc signing isn't: the island's Allow / Deny button
 runs for properly signed apps.
 
 ```bash
-git clone https://github.com/jdalessandro/claude-notch.git
-cd claude-notch
+git clone https://github.com/jdalessandro/notchbot.git
+cd notchbot
 echo YOUR_TEAM_ID > .xcode-team   # 10 characters, from Xcode ▸ Settings ▸ Accounts (never committed)
-make bundle                       # generates the Xcode project and builds dist/ClaudeNotch.app
-open dist/ClaudeNotch.app
+make bundle                       # generates the Xcode project and builds dist/Notchbot.app
+open dist/Notchbot.app
 ```
 
 ## How it works
 
 ```
-claude (CLI / desktop) ── hook event ──▶ claude-notch-hook ── Unix socket ──▶ ClaudeNotch.app ──▶ the island
+claude (CLI / desktop) ── hook event ──▶ notchbot-hook ── Unix socket ──▶ Notchbot.app ──▶ the island
                                                               ◀── Allow / Deny (permission requests only)
-claude status line ─────────────────────▶ claude-notch-hook --statusline ──▶ quota windows
+claude status line ─────────────────────▶ notchbot-hook --statusline ──▶ quota windows
 ~/.claude/projects/**/*.jsonl ──────────────────────────────────────────▶ tokens, context, usage windows
 ```
 
@@ -119,7 +119,7 @@ CLI sessions. They don't report which terminal they run in, so clicking one open
 
 Percentages for the 5-hour and weekly limits come from Claude Code's status line. Turn them on with
 *Settings ▸ Integration ▸ Enable quota gauges* (or the **Enable** button in the Usage card). This registers
-`claude-notch-hook --statusline` as your status line **only if you don't already have one**; an existing status line is never replaced.
+`notchbot-hook --statusline` as your status line **only if you don't already have one**; an existing status line is never replaced.
 The last report is saved (`quota.json` in Application Support) and shown with an "Updated … ago" pill, so the bars stay populated between terminal sessions and across app restarts. Until a terminal session has reported at least once, the card says so (use the **Tokens** toggle meanwhile).
 
 > **Terminal sessions only.** The status line is a terminal feature, so limits arrive when a Claude Code *terminal*
@@ -152,11 +152,11 @@ Open from the menu-bar icon, the *Sessions* window's **⋯ ▸ Settings…**, or
 
 | Symptom | Try |
 |---|---|
-| Nothing appears | Is the app running (menu-bar sparkle)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
+| Nothing appears | Is the app running (menu-bar robot)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
 | Island missing | Menu bar ▸ **Show Island**. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
 | Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
-| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Claude Notch leaves it alone. |
+| No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, Notchbot leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
 | Want to see raw events | *Settings ▸ Advanced ▸ Log raw hook events* (the log contains prompts: keep it private). |
 
@@ -174,8 +174,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). With only the Command Line Tools install
 `plugin for module 'TestingMacros' not found`; re-run. Source layout:
 
 ```
-Sources/ClaudeNotchCore   pure logic: events, state machine, transcript + usage parsing, IPC, installer, preferences
-Sources/claude-notch-hook the forwarder Claude Code invokes (never blocks a session)
+Sources/NotchbotCore   pure logic: events, state machine, transcript + usage parsing, IPC, installer, preferences
+Sources/notchbot-hook the forwarder Claude Code invokes (never blocks a session)
 App/                      the host app: model, Live Activity host, Sessions window, settings, menu bar
 Shared/                   island views, App Intents and activity attributes (app + widget)
 Widget/                   the widget extension that draws the Live Activity
@@ -211,7 +211,7 @@ Sparkle auto-update · launch at login.
 
 ## Trademarks and affiliation
 
-Claude Notch is an independent, community project. It is **not affiliated with, endorsed by, or sponsored by Anthropic**.
+Notchbot is an independent, community project. It is **not affiliated with, endorsed by, or sponsored by Anthropic**.
 "Claude" and "Claude Code" are trademarks of Anthropic, PBC, and are used here only to say what this app works with.
 
 This repository does not include Anthropic's logos, the Claude mark, or other Anthropic brand assets, and contributions

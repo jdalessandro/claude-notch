@@ -18,21 +18,21 @@ esac; done
 
 VERSION=$(tr -d '[:space:]' < VERSION)
 REPO=${RELEASE_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}
-TAP_REPO=${TAP_REPO:-${REPO%%/*}/homebrew-tap}
-NOTARY_PROFILE=${NOTARY_PROFILE:-claude-notch}
+TAP_REPO=${TAP_REPO:-${REPO%%/*}/homebrew-notchbot}
+NOTARY_PROFILE=${NOTARY_PROFILE:-notchbot}
 SHORT_SHA=$(git rev-parse --short=7 HEAD)
 if [ "$CHANNEL" = ci ]; then
   BUILD=$(git rev-list --count HEAD); LABEL="$VERSION-ci.$BUILD.$SHORT_SHA"; TAG="build-$BUILD"
 else
   BUILD=$VERSION; LABEL=$VERSION; TAG="v$VERSION"
 fi
-APP=dist/ClaudeNotch.app
-OUT=dist/ClaudeNotch-$LABEL
+APP=dist/Notchbot.app
+OUT=dist/Notchbot-$LABEL
 die() { echo "error: $*" >&2; exit 1; }
 
 echo "==> Preflight ($CHANNEL $LABEL)"
-TEAM=${CLAUDE_NOTCH_TEAM:-$(cat .xcode-team 2>/dev/null || true)}
-[ -n "$TEAM" ] || die "set CLAUDE_NOTCH_TEAM or write your team id to .xcode-team"
+TEAM=${NOTCHBOT_TEAM:-$(cat .xcode-team 2>/dev/null || true)}
+[ -n "$TEAM" ] || die "set NOTCHBOT_TEAM or write your team id to .xcode-team"
 IDENTITY=${DEVELOPER_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)}
 [ -n "$IDENTITY" ] || die "no 'Developer ID Application' certificate in your keychain (docs/RELEASING.md, step 1)"
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
@@ -54,7 +54,7 @@ make test
 
 echo "==> Build"
 CONFIG=Release ./scripts/bundle.sh
-WIDGET=$APP/Contents/PlugIns/ClaudeNotchWidget.appex
+WIDGET=$APP/Contents/PlugIns/NotchbotWidget.appex
 stamp() { # before signing: any later edit would break the signature
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$1" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$1"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$1" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD" "$1"
@@ -66,7 +66,7 @@ sign() { codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@";
 embed() { [ -n "${2:-}" ] && cp "$2" "$1/Contents/embedded.provisionprofile" || true; }
 echo "==> Sign: $IDENTITY"
 embed "$WIDGET" "${WIDGET_PROFILE:-}"; embed "$APP" "${APP_PROFILE:-}"   # Developer ID provisioning profiles, if Live Activities need them
-sign "$APP/Contents/MacOS/claude-notch-hook"
+sign "$APP/Contents/MacOS/notchbot-hook"
 sign --entitlements Widget/Widget.entitlements "$WIDGET"
 sign --entitlements App/App.entitlements "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
@@ -78,7 +78,7 @@ xcrun stapler staple "$APP"; rm "$OUT.zip"
 
 echo "==> dmg"
 STAGE=$(mktemp -d); cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-rm -f "$OUT.dmg"; hdiutil create -volname "Claude Notch" -srcfolder "$STAGE" -ov -format UDZO "$OUT.dmg"; rm -rf "$STAGE"
+rm -f "$OUT.dmg"; hdiutil create -volname "Notchbot" -srcfolder "$STAGE" -ov -format UDZO "$OUT.dmg"; rm -rf "$STAGE"
 sign "$OUT.dmg"
 xcrun notarytool submit "$OUT.dmg" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$OUT.dmg"
@@ -86,7 +86,7 @@ xcrun stapler staple "$OUT.dmg"
 echo "==> Verify like a stranger's Mac"
 spctl --assess --type execute -vv "$APP"
 spctl --assess --type open --context context:primary-signature -vv "$OUT.dmg"
-(cd dist && shasum -a 256 "ClaudeNotch-$LABEL.dmg" > "ClaudeNotch-$LABEL.dmg.sha256" && cat "ClaudeNotch-$LABEL.dmg.sha256")
+(cd dist && shasum -a 256 "Notchbot-$LABEL.dmg" > "Notchbot-$LABEL.dmg.sha256" && cat "Notchbot-$LABEL.dmg.sha256")
 SHA=$(cut -d' ' -f1 "$OUT.dmg.sha256")
 
 if [ "$DRY" = 1 ]; then echo "Dry run: built $OUT.dmg, nothing published."; exit 0; fi
@@ -106,9 +106,9 @@ else
   TAP=$(mktemp -d)
   gh repo clone "$TAP_REPO" "$TAP" -- -q
   mkdir -p "$TAP/Casks"
-  sed -e "s/\"VERSION\"/\"$VERSION\"/" -e "s/\"SHA256\"/\"$SHA\"/" packaging/claude-notch.rb.template > "$TAP/Casks/claude-notch.rb"
-  git -C "$TAP" add Casks/claude-notch.rb
-  git -C "$TAP" diff --cached --quiet || { git -C "$TAP" commit -q -m "claude-notch $VERSION" && git -C "$TAP" push -q; }
+  sed -e "s/\"VERSION\"/\"$VERSION\"/" -e "s/\"SHA256\"/\"$SHA\"/" packaging/notchbot.rb.template > "$TAP/Casks/notchbot.rb"
+  git -C "$TAP" add Casks/notchbot.rb
+  git -C "$TAP" diff --cached --quiet || { git -C "$TAP" commit -q -m "notchbot $VERSION" && git -C "$TAP" push -q; }
   rm -rf "$TAP"
 fi
 echo "Done: https://github.com/$REPO/releases/tag/$TAG"

@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 private func tmpSocket() -> String { "/tmp/cn-ipc-\(getpid())-\(Int.random(in: 0..<999_999)).sock" }
 
