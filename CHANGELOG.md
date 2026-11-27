@@ -12,6 +12,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - **Island colours**: coral = working (the waveform), orange = waiting for you, blue = ready for review, red = negative (failed,
   destructive, Deny), green = positive (Allow / Confirm). Plan-limit bars are blue and context rings coral, turning orange
   (75% / 65%) then red (90% / 85%, with a "!"). Only the "need you" count is tinted in the header.
+- The island header counts **sessions** ("2 sessions"), not agents, so it no longer reads like the subagents pill beside it.
 - **One approval pattern**: only the featured card answers. Session rows show a quiet **Review** (or **Open**) instead of
   inline Deny / Allow. On a destructive command Allow takes a second tap (**Confirm**, lapses after 6 s), with the red "Destructive" pill carrying the warning; "Allow for session" stays hidden for it.
 - **Branding**: the name is styled **NotchBot** in the UI and docs (identifiers `Notchbot.app`, `notchbot-hook`,

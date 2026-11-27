@@ -22,7 +22,7 @@ you haven't reviewed. Green is Allow, red is Deny, failed or destructive.
 
 **Expanded view.** It opens by itself when something needs you. From top to bottom:
 
-1. **Header**: total agents, how many need you, how many are working, and how many subagents run.
+1. **Header**: total sessions, how many need you, how many are working, and how many subagents run.
 2. **The most urgent request**, featured: a permission request (exact command, **Allow / Deny**), or a question (its
    choices, **Answer in Claude** / **Not now**). Urgency order: needs permission, needs input, failed, working, done, ended.
 3. **Session cards** (up to three per page, two at the *Large* and *Larger* sizes): name, branch, status, elapsed time,

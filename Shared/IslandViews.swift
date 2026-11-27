@@ -289,8 +289,8 @@ struct AgentWave: View {
 
     private var spokenLabel: String {
         if let label { return label }
-        if agents + subagents == 0 { return "No agents working" }
-        var s = "\(agents) agent\(agents == 1 ? "" : "s") working"
+        if agents + subagents == 0 { return "No sessions working" }
+        var s = "\(agents) session\(agents == 1 ? "" : "s") working"
         if subagents > 0 { s += ", \(subagents) subagent\(subagents == 1 ? "" : "s")" }
         return s
     }
@@ -1082,13 +1082,13 @@ struct IslandTitle: View {
     }
 }
 
-/// "N agents". On the island it sits in the leading region, up beside the cutout.
+/// "N sessions". On the island it sits in the leading region, up beside the cutout.
 struct IslandHeadline: View {
     let state: NotchActivityState
     var body: some View {
         Text(
             state.sessions == 0
-                ? (state.hooksMissing ? "Not watching" : "All quiet") : state.sessions == 1 ? "1 agent" : "\(state.sessions) agents"
+                ? (state.hooksMissing ? "Not watching" : "All quiet") : state.sessions == 1 ? "1 session" : "\(state.sessions) sessions"
         )
         .sfont(size: 16, weight: .semibold).foregroundStyle(.white).lineLimit(1)
         .fixedSize()
