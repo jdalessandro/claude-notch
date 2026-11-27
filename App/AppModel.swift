@@ -232,7 +232,6 @@ final class AppModel {
     /// Answers Claude's question with the chosen option: the hook adds it to the tool input, so Claude carries on
     /// without showing its own question. A request the hook already left is detached instead of reported as answered.
     func answerChoice(_ session: AgentSession, option: Int) {
-        choosingRequestId = nil
         guard let q = session.pending?.question, q.canAnswerInline, q.options.indices.contains(option) else { return reconcile() }
         if broker.answerQuestion(session.id, question: q.text, choice: q.options[option]) {
             store.resolvePermission(session.id, allowed: true)
@@ -338,8 +337,6 @@ final class AppModel {
 
     /// A request the user chose to see in full ("Review"); it takes the featured card while it is live.
     private var reviewRequestId: String?
-    /// The question whose choices are open as their own view (see `NotchActivityState.Choice`).
-    private var choosingRequestId: String?
     /// Allow on a destructive request is two taps ("Allow", then "Confirm"); this is the armed state between them.
     private var confirmation = AllowConfirmation()
     /// When the featured card's request became visible, and when the card last changed: Allow taps right after a
@@ -351,10 +348,10 @@ final class AppModel {
 
     private func trackVisibility(_ state: NotchActivityState) {
         let now = Date()
-        let ids = Set([state.prompt?.requestId, state.choice?.requestId].compactMap { $0 })
+        let ids = Set([state.prompt?.requestId].compactMap { $0 })
         visibleSince = visibleSince.filter { ids.contains($0.key) }
         for id in ids where visibleSince[id] == nil { visibleSince[id] = now }
-        let shown = state.prompt?.requestId ?? state.choice?.requestId
+        let shown = state.prompt?.requestId
         if shown != lastPromptId {
             lastPromptId = shown
             promptChangedAt = now
@@ -397,7 +394,7 @@ final class AppModel {
             sessions: store.active, quota: quotaNow, maxRows: prefs.islandSize.maxRows, page: page,
             featuredRequestId: reviewRequestId, confirmingRequestId: confirmation.armedRequest(),
             focus: prefs.showSubagents ? focusedSession : nil, limitsNote: note,
-            hooksInstalled: hooksInstalled, choosing: choosingRequestId)
+            hooksInstalled: hooksInstalled)
     }
 
     /// Pushes the current state to the island. Something *new* that needs the user (a new request, a newly finished
@@ -405,8 +402,6 @@ final class AppModel {
     func reconcile() {
         if snapshotOnly { return }
         if let r = reviewRequestId, !store.active.contains(where: { $0.isAnswerable(requestId: r) }) { reviewRequestId = nil }
-        // The choices close when their question is settled (answered in Claude, timed out, session ended).
-        if let r = choosingRequestId, !store.active.contains(where: { $0.isAnswerable(requestId: r) }) { choosingRequestId = nil }
         var state = makeState(page: islandPage)
         // "Confirm" only ever belongs to the card on screen: another card or a finished request disarms it.
         if confirmation.requestId != nil, confirmation.requestId != state.prompt?.requestId {
@@ -430,7 +425,6 @@ final class AppModel {
         } else {
             islandPage = state.page  // keep it in range as sessions come and go
         }
-        if state.choice == nil { choosingRequestId = nil }
         if !prefs.showReviewBadge { state.reviews = 0 }
         state.subagentTree = prefs.showSubagents
         if state.focus == nil { focusedSession = nil }  // the session ended or has no subagents any more
@@ -454,22 +448,6 @@ final class AppModel {
             activityTrace("intent \(action)")
             islandPage += action == .nextPage ? 1 : -1
             focusedSession = nil
-            choosingRequestId = nil
-            reconcile()
-            return
-        case .chooseAnswer:
-            // Empty request = Back. Opening the choices restarts the tap delay, so the tap that opened them can't also pick.
-            activityTrace("intent chooseAnswer \(requestId)")
-            if requestId.isEmpty {
-                choosingRequestId = nil
-            } else if let s = store.sessions[sessionId], s.isAnswerable(requestId: requestId),
-                s.pending?.question?.canAnswerInline == true
-            {
-                choosingRequestId = requestId
-                visibleSince[requestId] = nil
-                islandPage = 0
-                focusedSession = nil
-            }
             reconcile()
             return
         case .focusSubagents:
@@ -508,13 +486,14 @@ final class AppModel {
         where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland && s.pending?.destructive != true:
             answerAllowForSession(sessionId)
         case .allow, .allowSession, .deny, .review: break
-        case .pickAnswer where s.isAnswerable(requestId: requestId) && choosingRequestId == requestId:
+        case .pickAnswer where s.isAnswerable(requestId: requestId):
+            // A card that has only just appeared may not be the one the user aimed at.
             guard IslandGuard.allowAccepted(visibleSince: visibleSince[requestId]) else {
                 activityTrace("pick ignored: choices visible < \(IslandGuard.tapDelay)s")
                 return
             }
             answerChoice(s, option: option)
-        case .pickAnswer, .chooseAnswer: break
+        case .pickAnswer: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
         case .nextPage, .previousPage, .refreshQuota, .openSettings, .focusSubagents: break

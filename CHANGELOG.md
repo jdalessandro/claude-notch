@@ -9,9 +9,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
   `docs/GUIDE.md`; build-from-source steps moved to CONTRIBUTING; fresh screenshots.
 
 ### Added
-- **Answer Claude's questions from the island.** **Answer** opens the choices as their own view (numbered, with Claude's
-  descriptions, a Back button like the subagent tree); a tap answers through the hook (`updatedInput.answers`).
-  **Other…** opens the session. Multi-part and "choose any" questions still go to Claude.
+- **Answer Claude's questions from the island.** The question card lists the choices (numbered, with Claude's
+  descriptions, titles wrap to two lines, descriptions clip to one); a tap answers through the hook (`updatedInput.answers`). **Other…** opens the
+  session. The card takes the island while it waits. Multi-part and "choose any" questions still go to Claude.
 
 ### Changed
 - **Island colours**: coral = working (the waveform), orange = waiting for you, blue = ready for review, red = negative (failed,

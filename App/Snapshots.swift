@@ -50,16 +50,13 @@ enum IslandSnapshots {
             ("working", busy(sessions)),
             ("permission", sessions.filter { $0.pending?.isQuestion != true }),
             ("question", sessions),
-            ("choices", sessions),
         ]
         var overflows: [String] = []
         for size in Preferences.IslandSize.allCases {
             for (kind, subset) in byKind {
-                let ask = subset.first { $0.pending?.isQuestion == true }?.pending?.id.uuidString
-                var st = NotchActivityState.make(
-                    sessions: subset, quota: quota, maxRows: size.maxRows, choosing: kind == "choices" ? ask : nil)
+                var st = NotchActivityState.make(sessions: subset, quota: quota, maxRows: size.maxRows)
                 st.scale = size.scale
-                if kind != "question" && kind != "choices" {
+                if kind != "question" {
                     write(expanded(st), dir.appendingPathComponent("expanded-\(kind)-\(size.title.lowercased()).png"))
                 }
                 let w = contentWidth(of: st)
@@ -69,9 +66,26 @@ enum IslandSnapshots {
                 }
             }
         }
-        // The question's choices, opened from the card's "Answer".
-        let choosing = NotchActivityState.make(
-            sessions: sessions, quota: quota, choosing: sessions.first { $0.pending?.isQuestion == true }?.pending?.id.uuidString)
+        // The same question with lengthy choices (clipped to two lines each) and at the largest size step.
+        var longAnswers = question
+        longAnswers.prompt?.text = "How would you most like to spend a free weekend?"
+        longAnswers.prompt?.header = "Weekend"
+        longAnswers.prompt?.choices = [
+            .init(
+                label: "Spend a quiet weekend hiking through the mountains",
+                detail: "Fresh air, scenic trails, and no screens in sight. You'd return tired but recharged."),
+            .init(
+                label: "Stay home and cook an elaborate multi-course feast",
+                detail: "You'd spend hours in the kitchen trying new recipes. The payoff is a great meal at your own table."),
+            .init(
+                label: "Go see a live concert with a huge crowd of friends",
+                detail: "Loud music, good company, and a night to remember. You'd lose your voice singing along."),
+            .init(
+                label: "Curl up on the couch and binge a favorite TV show!",
+                detail: "Blankets, snacks, and zero obligations. You'd see how many episodes you can fit in one day."),
+        ]
+        var largeQuestion = NotchActivityState.make(sessions: sessions, quota: quota, maxRows: larger.maxRows)
+        largeQuestion.scale = larger.scale
         // A session's subagent tree in place of the list: without a request card, and under one (an orange subagent).
         let working3 = sessions.filter { $0.pending == nil }
         let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "infra-tools")
@@ -79,7 +93,8 @@ enum IslandSnapshots {
             sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, focus: "web-dashboard")
         for (name, st) in [
             ("expanded-subagents", tree), ("expanded-subagents-permission", treeAsking),
-            ("expanded-question", question), ("expanded-question-choices", choosing), ("expanded-permission", permission),
+            ("expanded-question", question), ("expanded-question-long", longAnswers), ("expanded-question-larger", largeQuestion),
+            ("expanded-permission", permission),
             ("expanded-permission-confirm", confirm),
             ("expanded-permission-allow", allow),
             ("expanded-working", working),

@@ -7,7 +7,7 @@ import Foundation
 enum IntentBridge {
     enum Action: Sendable {
         case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings, focusSubagents
-        case chooseAnswer, pickAnswer
+        case pickAnswer
     }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String, _ option: Int) -> Void)?
 }
@@ -98,19 +98,6 @@ struct FocusSubagentsIntent: LiveActivityIntent {
     init(sessionId: String) { self.sessionId = sessionId }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(.focusSubagents, sessionId, "", 0)
-        return .result()
-    }
-}
-
-/// Opens a question's choices as their own view (or, with an empty request, goes back to the sessions).
-struct ChooseAnswerIntent: LiveActivityIntent {
-    static let title: LocalizedStringResource = "Choose an answer"
-    @Parameter(title: "Session") var sessionId: String
-    @Parameter(title: "Request") var requestId: String
-    init() {}
-    init(sessionId: String, requestId: String) { self.sessionId = sessionId; self.requestId = requestId }
-    @MainActor func perform() async throws -> some IntentResult {
-        IntentBridge.handler?(.chooseAnswer, sessionId, requestId, 0)
         return .result()
     }
 }

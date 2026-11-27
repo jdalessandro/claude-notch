@@ -72,28 +72,35 @@ import Testing
         #expect(q.options == ["Postgres", "SQLite", "DynamoDB"] && q.descriptions == ["Relational", "", "Managed NoSQL"])
     }
 
-    @Test func choosingReplacesTheCardAndTheListWithTheChoices() throws {
+    @Test func theCardCarriesTheChoicesAndTakesTheIsland() throws {
         let s = try asking(Self.db)
-        let id = try #require(s.pending?.id.uuidString)
-        let card = NotchActivityState.make(sessions: [s], quota: nil)
-        #expect(card.prompt?.canChoose == true && card.choice == nil)
-        let st = NotchActivityState.make(sessions: [s], quota: nil, choosing: id)
-        #expect(st.prompt == nil && st.rows.isEmpty)
-        let c = try #require(st.choice)
-        #expect(c.requestId == id && c.text == "Which database?" && c.header == "Database")
-        #expect(c.options.map(\.label) == ["Postgres", "SQLite", "DynamoDB"])
-        #expect(c.options.map(\.detail) == ["Relational", "", "Managed NoSQL"])
+        var other = s; other.id = "s2"
+        let st = NotchActivityState.make(sessions: [s, other], quota: nil)
+        let p = try #require(st.prompt)
+        #expect(p.canChoose && p.requestId == s.pending?.id.uuidString)
+        #expect(p.choices.map(\.label) == ["Postgres", "SQLite", "DynamoDB"])
+        #expect(p.choices.map(\.detail) == ["Relational", "", "Managed NoSQL"])
+        // A tall card: no session rows and no pager under it; the header still counts everyone.
+        #expect(st.rows.isEmpty && st.pages == 1 && st.needsYou == 2)
         #expect(st.encodedSize <= NotchActivityState.byteBudget)
     }
 
+    @Test func longChoicesAreClippedAndStayInTheBudget() throws {
+        let long = String(repeating: "word ", count: 80)
+        let opts = (1...6).map { #"{"label":"Option \#($0) \#(long)","description":"\#(long)"}"# }.joined(separator: ",")
+        let s = try asking(#"{"questions":[{"question":"\#(long)","options":[\#(opts)]}]}"#)
+        let p = try #require(NotchActivityState.make(sessions: [s], quota: nil).prompt)
+        #expect(p.choices.count == NotchActivityState.maxOptions)
+        #expect(p.choices.allSatisfy { $0.label.count <= 80 && $0.detail.count <= 100 })
+        #expect(NotchActivityState.make(sessions: [s], quota: nil).encodedSize <= NotchActivityState.byteBudget)
+    }
+
     @Test func choicesAreNotOfferedWhenTheIslandCannotAnswer() throws {
-        let s = try asking(Self.db, canAnswer: false)
-        #expect(NotchActivityState.make(sessions: [s], quota: nil).prompt?.canChoose == false)
-        let id = try #require(s.pending?.id.uuidString)
-        #expect(NotchActivityState.make(sessions: [s], quota: nil, choosing: id).choice == nil)
-        // A stale request id never opens anything.
-        let live = try asking(Self.db)
-        #expect(NotchActivityState.make(sessions: [live], quota: nil, choosing: UUID().uuidString).choice == nil)
+        let p = try #require(NotchActivityState.make(sessions: [try asking(Self.db, canAnswer: false)], quota: nil).prompt)
+        #expect(!p.canChoose && p.choices.isEmpty)
+        let multi = Self.db.replacingOccurrences(of: #""multiSelect":false"#, with: #""multiSelect":true"#)
+        let m = try #require(NotchActivityState.make(sessions: [try asking(multi)], quota: nil).prompt)
+        #expect(!m.canChoose && m.choices.isEmpty && !m.options.isEmpty)
     }
 
     @Test func theBrokerDeliversTheChosenLabelOnce() throws {
