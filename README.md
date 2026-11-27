@@ -70,7 +70,7 @@ open it and drag **NotchBot** to Applications.
 > Releases are being set up; until the first one is published, [build from source](#build-from-source).
 
 The app opens a window for a moment (starting a Live Activity needs the foreground), starts the island, then lives in
-the menu bar. If the island is missing, use the menu bar ▸ **Show Island**.
+the menu bar. If the island is missing, quit and relaunch Notchbot.
 
 Then click **Install hooks** (in the island footer, or *Settings ▸ Integration*), and restart any Claude sessions that were
 already running. Hooks are merged into `~/.claude/settings.json` alongside any you already have, with a one-time backup
@@ -156,7 +156,7 @@ Open from the menu-bar icon, the island's **⋯ ▸ Settings…**, or ⌘, while
 |---|---|
 | Nothing appears | Is the app running (menu-bar robot)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
 | Subagents show up late, or the footer says **Update hooks** | Your hooks were installed by an older version and miss events (such as `SubagentStart`). Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
-| Island missing | Menu bar ▸ **Show Island**. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
+| Island missing | Quit and relaunch Notchbot. Starting a Live Activity needs the app in the foreground, so it only starts at launch. |
 | Allow / Deny do nothing | If you built from source, it must be signed with a real team (see [Build from source](#build-from-source)); ad-hoc signed builds can't run App Intents. Release builds are fine. |
 | No quota percentages | Enable quota gauges, then run `claude` in a **terminal** and send one message; the report is remembered afterwards. Limits only exist for Pro/Max, and the desktop app's Code tab doesn't send them. If you already use a custom status line, NotchBot leaves it alone. |
 | Dollars shown/hidden unexpectedly | *Settings ▸ Content ▸ Dollar cost*. |
