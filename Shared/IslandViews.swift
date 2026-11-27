@@ -859,17 +859,19 @@ struct Footer: View {
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false, dots: state.offPageNeed == 0)
+            // Tightest: a page label, a "+N need you" hint and 24pt targets leave no room for reset times.
+            row(bar: 16, size: 10, icon: false, dots: false, resets: false)
         }
         .padding(.horizontal, 4)
     }
 
     private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true, resets: Bool = true
     )
         -> some View
     {
         HStack(spacing: 8) {
-            limits(bar: bar, size: size, icon: icon, words: words)
+            limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh
             Spacer(minLength: 0)
             pager(dots: dots)
@@ -898,7 +900,7 @@ struct Footer: View {
         if state.pages > 1 { Pager(state: state, dots: dots).fixedSize() }
     }
 
-    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool) -> some View {
+    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
         if state.limitsUnknown {
             // Never vanish silently: say that there is nothing to show (nothing at all for an account without plan windows).
             if let text = Island.unavailableText(state.limitsNote) {
@@ -907,9 +909,11 @@ struct Footer: View {
         } else {
             HStack(spacing: 9) {
                 if let f = state.fiveHour {
-                    limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, words: words, hm: true)
+                    limit("5h", f, resets ? state.fiveHourReset : nil, bar: bar, size: size, icon: icon, words: words, hm: true)
                 }
-                if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon, words: words) }
+                if let w = state.weekly {
+                    limit("7d", w, resets ? state.weeklyReset : nil, bar: bar, size: size, icon: icon, words: words)
+                }
             }
         }
     }

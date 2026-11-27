@@ -39,7 +39,7 @@ enum IslandSnapshots {
         write(expanded(working, stale: true), dir.appendingPathComponent("expanded-stale.png"))
         // A session's subagent tree in place of the list: without a request card, and under one (an amber subagent).
         let working3 = sessions.filter { $0.pending == nil }
-        let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "payments-api")
+        let tree = NotchActivityState.make(sessions: working3, quota: quota, focus: "infra-tools")
         let treeAsking = NotchActivityState.make(
             sessions: sessions.filter { $0.pending?.isQuestion != true }, quota: quota, focus: "web-dashboard")
         for (name, st) in [
