@@ -1,9 +1,9 @@
 import AppIntents
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
 // The island's views. They live in Shared so the widget draws them and the app can render the same views to PNG
-// (`ClaudeNotch --snapshot <dir>`) for docs and for checking layout without the real island.
+// (`Notchbot --snapshot <dir>`) for docs and for checking layout without the real island.
 // Styled after the system media island: big artwork, a bold title over a grey subtitle, a waveform on the right,
 // no outlines, generous continuous corners.
 
@@ -37,9 +37,13 @@ enum Island {
     static let inset: CGFloat = 17
     /// The logo in the compact island, and the waveform beside it, sized from it: the tallest bar is this fraction of
     /// the logo's height, so the two always read as a pair.
-    static let compactIcon: CGFloat = 17
+    static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
+    /// The robot's three tones. Change these to recolour the logo.
+    static let robotBase = coral
+    static let robotLight = Color(red: 0.933, green: 0.604, blue: 0.486)  // #EE9A7C
+    static let robotShadow = Color(red: 0.663, green: 0.333, blue: 0.227)  // #A9553A
     static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
     static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let red = Color(red: 1.0, green: 0.27, blue: 0.23)
@@ -91,39 +95,72 @@ extension NotchActivityState.Row {
 
 // MARK: - Artwork
 
-/// The radial burst drawn on the artwork: rounded rays of alternating length around a common centre.
-struct Burst: Shape {
-    var rays = 12
+/// The app's mark: a small 8-bit robot (antenna, boxy head, ear nubs, two eyes, a mouth slot), an original sprite on a
+/// 16 x 14 grid. `L`, `M` and `D` are its highlight, base and shadow tones. A size that is a multiple of 16pt puts
+/// every pixel on a whole device pixel (16pt = 2px a pixel on a Retina screen, 32pt = 4px).
+struct RobotMark: Shape {
+    static let grid = [
+        ".......LL.......",
+        ".......MM.......",
+        ".......MM.......",
+        "...LLLLLLLLLL...",
+        "..MMMMMMMMMMMM..",
+        "..MMMMMMMMMMMM..",
+        "MMMMMMMMMMMMMMMM",
+        "MMMM..MMMM..MMMM",
+        "MMMM..MMMM..MMMM",
+        "MMMMMMMMMMMMMMMM",
+        "..MMMM....MMMM..",
+        "..MMMMMMMMMMMM..",
+        "..DDDDDDDDDDDD..",
+        "...DDDDDDDDDD...",
+    ]
+    /// The tones to draw; nil draws every filled pixel as one solid shape (the menu-bar glyph).
+    var tones: Set<Character>?
+
     func path(in r: CGRect) -> Path {
-        let lengths: [CGFloat] = [1.0, 0.74, 0.92, 0.70, 0.98, 0.78, 0.90, 0.72, 1.0, 0.76, 0.94, 0.70]
-        let c = CGPoint(x: r.midX, y: r.midY)
-        let radius = min(r.width, r.height) / 2
-        let w = radius * 0.2
+        let cols = CGFloat(Self.grid[0].count), rows = CGFloat(Self.grid.count)
+        let cell = min(r.width / cols, r.height / rows)
+        let ox = r.midX - cols * cell / 2, oy = r.midY - rows * cell / 2
+        let bleed = cell * 0.01  // neighbouring runs overlap a hair so no seam shows between them
         var p = Path()
-        for i in 0..<rays {
-            let len = radius * lengths[i % lengths.count]
-            let ray = CGRect(x: -w / 2, y: -len, width: w, height: len - radius * 0.08)
-            let t = CGAffineTransform(translationX: c.x, y: c.y).rotated(by: CGFloat(i) / CGFloat(rays) * 2 * .pi)
-            p.addPath(Path(roundedRect: ray, cornerRadius: w / 2).applying(t))
+        for (y, row) in Self.grid.enumerated() {
+            let cells = Array(row)
+            var x = 0
+            while x < cells.count {
+                let tone = cells[x]
+                guard tone != ".", tones?.contains(tone) ?? true else { x += 1; continue }
+                var end = x
+                while end < cells.count, cells[end] == tone { end += 1 }
+                p.addRect(
+                    CGRect(
+                        x: ox + CGFloat(x) * cell - bleed, y: oy + CGFloat(y) * cell - bleed,
+                        width: CGFloat(end - x) * cell + bleed * 2, height: cell + bleed * 2))
+                x = end
+            }
         }
-        p.addEllipse(in: CGRect(x: c.x - w * 0.9, y: c.y - w * 0.9, width: w * 1.8, height: w * 1.8))
         return p
     }
 }
 
-/// Stands in for album art: the coral burst on its own, no tile. It does not change colour with state;
+/// The robot in its three tones.
+struct RobotView: View {
+    var body: some View {
+        ZStack {
+            RobotMark(tones: ["D"]).fill(Island.robotShadow)
+            RobotMark(tones: ["M"]).fill(Island.robotBase)
+            RobotMark(tones: ["L"]).fill(Island.robotLight)
+        }
+    }
+}
+
+/// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
 /// the waveform and an amber badge carry that.
 struct Artwork: View {
     var size: CGFloat
     var badge = 0
     var body: some View {
-        Burst()
-            .fill(
-                LinearGradient(
-                    colors: [Color(red: 0.96, green: 0.60, blue: 0.45), Island.coral],
-                    startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .frame(width: size * 0.88, height: size * 0.88)
+        RobotView()
             .frame(width: size, height: size)
             // Kept inside the frame: the compact region clips anything that sticks out.
             .overlay(alignment: .bottomTrailing) {
@@ -715,7 +752,7 @@ struct IslandIdle: View {
                     .lineLimit(1).padding(.horizontal, 4)
             } else {
                 HStack(spacing: 12) {
-                    Artwork(size: 34 * k)
+                    Artwork(size: 32 * k)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("All quiet").sfont(size: 16, weight: .semibold).foregroundStyle(.white)
                         Text("No Claude Code sessions running").sfont(size: 13).foregroundStyle(Island.secondary)

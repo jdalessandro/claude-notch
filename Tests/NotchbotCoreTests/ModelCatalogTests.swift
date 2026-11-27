@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 struct ModelCatalogTests {
     let json =

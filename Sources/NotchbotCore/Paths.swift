@@ -4,11 +4,11 @@ import Foundation
 public enum Paths {
     public static var supportDir: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ClaudeNotch", isDirectory: true)
+            .appendingPathComponent("Notchbot", isDirectory: true)
     }
     /// Overridable for tests / multiple instances.
     public static var socketPath: String {
-        ProcessInfo.processInfo.environment["CLAUDE_NOTCH_SOCKET"]
+        ProcessInfo.processInfo.environment["NOTCHBOT_SOCKET"]
             ?? supportDir.appendingPathComponent("notch.sock").path
     }
     public static var pricingURL: URL { supportDir.appendingPathComponent("pricing.json") }

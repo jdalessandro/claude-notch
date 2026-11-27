@@ -1,11 +1,11 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
-// Claude Notch — Claude Code's status as a macOS Live Activity (Dynamic Island).
-//   ClaudeNotch            run normally (listens for hook events)
-//   ClaudeNotch --demo     run with synthetic sessions (no hooks needed)
-//   ClaudeNotch --snapshot <dir>   render the island views with the demo data to PNGs and exit
+// Notchbot — Claude Code's status as a macOS Live Activity (Dynamic Island).
+//   Notchbot            run normally (listens for hook events)
+//   Notchbot --demo     run with synthetic sessions (no hooks needed)
+//   Notchbot --snapshot <dir>   render the island views with the demo data to PNGs and exit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -35,13 +35,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start(demo: demo)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Claude Notch")
+        let mark = ImageRenderer(
+            content: RobotMark(tones: nil).fill(.black).frame(width: 16, height: 16))
+        mark.scale = NSScreen.main?.backingScaleFactor ?? 2
+        let icon = mark.nsImage
+        icon?.isTemplate = true  // the menu bar tints it for light/dark
+        icon?.accessibilityDescription = "Notchbot"
+        item.button?.image = icon
         let menu = NSMenu()
         menu.addItem(withTitle: "Sessions…", action: #selector(showWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Show Island", action: #selector(showIsland), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Claude Notch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Notchbot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for i in menu.items where i.action != #selector(NSApplication.terminate(_:)) { i.target = self }
         item.menu = menu
         statusItem = item
@@ -86,7 +92,7 @@ final class DetailWindowController {
     func show(model: AppModel) {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: DetailView(model: model)))
-            w.title = "Claude Notch"
+            w.title = "Notchbot"
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             w.setContentSize(NSSize(width: 460, height: 640))
             w.isReleasedWhenClosed = false
