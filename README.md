@@ -100,7 +100,7 @@ which the app refreshes on launch after an update.
 **Just want to look around?** `make demo` launches the app with synthetic agents and no hooks.
 
 Signed and notarized releases with a Homebrew cask are being set up (`scripts/release.sh`,
-`packaging/claude-notch.rb.template`); until the first release is published, build from source as above.
+`packaging/notchbot.rb.template`); until the first release is published, build from source as above.
 
 ## Settings
 

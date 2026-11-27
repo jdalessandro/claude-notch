@@ -31,7 +31,7 @@ prerelease: ## Signed, notarized prerelease build of HEAD (tag build-N), no cask
 	./scripts/release.sh --prerelease
 
 snapshots: bundle ## Re-render docs/screens/*.png from the demo data (offscreen)
-	dist/ClaudeNotch.app/Contents/MacOS/ClaudeNotch --snapshot docs/screens
+	dist/Notchbot.app/Contents/MacOS/Notchbot --snapshot docs/screens
 
 clean: ## Remove build output
 	rm -rf .build build dist Notchbot.xcodeproj
