@@ -321,6 +321,22 @@ struct Pill: View {
 
 // MARK: - Badges
 
+/// A working session's elapsed time, "4:07". `Text(_, style: .timer)` takes whatever width it is offered and redraws in
+/// place, so a fixed frame made it ghost ("0:39" over "0:3") or clip once the digits changed width. This one sizes to a
+/// hidden template (monospaced digits, so every value is as wide as the template) and counts in minutes past the hour
+/// ("75:12") instead of growing an extra "h:" group. Past 99 minutes it shrinks a little rather than overflow.
+struct ElapsedTimer: View {
+    let since: Date
+    var body: some View {
+        Text("00:00").hidden()
+            .overlay {
+                Text(timerInterval: since...Date.distantFuture, pauseTime: nil, countsDown: false, showsHours: false)
+                    .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.6)
+            }
+            .monospacedDigit().lineLimit(1)
+    }
+}
+
 /// A small capsule label. `tinted` uses the colour for text on a faint wash of it; neutral is grey on grey.
 struct Badge<Label: View>: View {
     var tint: Color? = nil
@@ -592,7 +608,7 @@ struct SessionRow: View {
     @ViewBuilder private var status: some View {
         if row.kind == .working, let since = row.since {
             Badge(tint: Island.coral) {
-                Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36 * k)
+                ElapsedTimer(since: since)
             }
         } else if row.kind == .approval, row.destructive {
             Badge("Destructive", tint: Island.red, icon: "exclamationmark.triangle.fill")
@@ -859,30 +875,36 @@ struct Footer: View {
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false)
-            // Tightest: the dots always win, so the reset times go.
+            // Tightest: the dots always win. Reset times go first, then 24pt targets at any scale.
             row(bar: 16, size: 10, icon: false, resets: false)
+            row(bar: 12, size: 9.5, icon: false, resets: false, compact: true)
         }
         .padding(.horizontal, 4)
     }
 
-    private func row(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true) -> some View {
-        HStack(spacing: 8) {
+    private func row(
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, compact: Bool = false
+    )
+        -> some View
+    {
+        HStack(spacing: compact ? 6 : 8) {
             limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
-            refresh
+            refresh(compact: compact)
             Spacer(minLength: 0)
-            pager
+            pager(compact: compact)
         }
     }
 
     /// Sits right after the limits it refreshes, not after the pager. Amber with an exclamation when the last refresh
     /// failed, coral while one is running.
-    private var refresh: some View {
+    private func refresh(compact: Bool) -> some View {
         let note = state.limitsNote
+        let d = compact ? 24 : 22 * k
         return Button(intent: RefreshQuotaIntent()) {
             Image(systemName: note == .failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.clockwise")
                 .sfont(size: 10, weight: .bold)
                 .foregroundStyle(note == .failed ? Island.amber : note == .refreshing ? Island.coral : .white.opacity(0.85))
-                .frame(width: 22 * k, height: 22 * k)
+                .frame(width: d, height: d)
                 .background(Circle().fill(Color.white.opacity(note == .refreshing ? 0.2 : 0.12)))
                 .frame(minWidth: 24, minHeight: 24)
                 .contentShape(Rectangle())
@@ -892,8 +914,8 @@ struct Footer: View {
         .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private var pager: some View {
-        if state.pages > 1 { Pager(state: state).fixedSize() }
+    @ViewBuilder private func pager(compact: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, compact: compact).fixedSize() }
     }
 
     @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
@@ -991,6 +1013,8 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
+    /// Tight: the arrows are 24pt buttons whatever the scale (the least that is still a target).
+    var compact = false
     /// At most this many dots are drawn; past it they are a window that follows the current page.
     private static let maxDots = 8
     @Environment(\.islandScale) private var k
@@ -1022,8 +1046,9 @@ struct Pager: View {
     }
 
     private func arrow(_ symbol: String) -> some View {
-        Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
-            .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
+        let d = compact ? 24 : 22 * k
+        return Image(systemName: symbol).sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
+            .frame(width: d, height: d).background(Circle().fill(Color.white.opacity(0.12)))
             .frame(minWidth: 24, minHeight: 24).contentShape(Rectangle())
     }
 }
