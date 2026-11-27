@@ -149,6 +149,7 @@ struct AgentWave: View {
     var pulse = 0
     var height: CGFloat = 18
     static let maxBars = 7
+    static let minBars = 5
 
     /// Bar `i`'s height (0.3...1) at beat `pulse`: deterministic, different per bar, never two beats alike.
     static func level(_ i: Int, _ pulse: Int) -> CGFloat {
@@ -168,9 +169,12 @@ struct AgentWave: View {
             }
             .frame(height: height)
         } else {
+            // At least `minBars` bars so one agent still reads as a waveform; agents beyond that add bars (up to
+            // `maxBars`), and subagents are the thinner ones at the end.
+            let total = max(main + subs, Self.minBars)
             HStack(alignment: .center, spacing: height * 0.14) {
-                ForEach(0..<(main + subs), id: \.self) { i in
-                    let isSub = i >= main
+                ForEach(0..<total, id: \.self) { i in
+                    let isSub = i >= main && i < main + subs
                     // Fixed-size bar scaled vertically: the layout never changes between beats, so the system's
                     // snapshot can't catch the bars collapsed or missing mid-animation.
                     Capsule().fill(tint)
