@@ -105,6 +105,9 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     public var pages = 1
     /// Type and icon size multiplier chosen in settings (1 = default); the widget process can't read the app's settings.
     public var scale = 1.0
+    /// Finished sessions waiting for the user to review; shown as a badge on the logo. The app zeroes it when the
+    /// setting is off, since the widget process can't read the app's settings.
+    public var reviews = 0
 
     /// Whether the waveform has bars to move.
     public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }
@@ -212,7 +215,7 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
-            pages: pages)
+            pages: pages, reviews: active.filter(\.needsReview).count)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).

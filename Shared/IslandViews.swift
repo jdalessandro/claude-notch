@@ -41,6 +41,7 @@ enum Island {
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
+    static let badgeRed = Color(red: 1.0, green: 0.27, blue: 0.23)  // the system badge red
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -157,21 +158,28 @@ struct RobotView: View {
 }
 
 /// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
-/// the waveform and an amber badge carry that.
+/// the waveform carries that, and the round red badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
+    /// Finished sessions waiting for review; a round red count on the robot's top right, like an app-icon badge.
     var badge = 0
     var body: some View {
+        // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
+        // that sticks out of the view's frame.
+        let d = size * 0.8  // badge diameter
+        let pad = badge > 0 ? d * 0.4 : 0
         RobotView()
             .frame(width: size, height: size)
-            // Kept inside the frame: the compact region clips anything that sticks out.
-            .overlay(alignment: .bottomTrailing) {
+            .padding(.top, pad).padding(.trailing, pad)
+            .overlay(alignment: .topTrailing) {
                 if badge > 0 {
-                    Text("\(badge)").font(.system(size: max(8, size * 0.36), weight: .bold, design: .rounded))
-                        .foregroundStyle(.black).monospacedDigit()
-                        .padding(.horizontal, size * 0.08).frame(minWidth: size * 0.5, minHeight: size * 0.5)
-                        .background(Capsule().fill(Island.amber))
-                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, size * 0.07)))
+                    Text(badge > 9 ? "9+" : "\(badge)")
+                        .font(.system(size: d * 0.62, weight: .bold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
+                        .frame(minWidth: d, minHeight: d)
+                        .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
+                        .background(Capsule().fill(Island.badgeRed))
+                        .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
     }
@@ -275,7 +283,7 @@ struct Badge<Label: View>: View {
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
-        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1)
+        .sfont(size: 11, weight: .semibold).monospacedDigit().lineLimit(1).fixedSize()
         .foregroundStyle(tint ?? Color.white.opacity(0.7))
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill((tint ?? .white).opacity(tint == nil ? 0.1 : 0.18)))
@@ -303,7 +311,7 @@ struct Stat<Glyph: View, Value: View>: View {
             value.sfont(size: 11, weight: .semibold).foregroundStyle(tint ?? Color.white.opacity(0.9))
             Text(label).sfont(size: 11, weight: .medium).foregroundStyle(Color.white.opacity(0.45))
         }
-        .monospacedDigit().lineLimit(1)
+        .monospacedDigit().lineLimit(1).fixedSize()
         .padding(.horizontal, 7 * k).padding(.vertical, 3 * k)
         .background(Capsule().fill(Color.white.opacity(0.08)))
         .fixedSize()
@@ -564,7 +572,7 @@ struct Footer: View {
 
     /// Sits right after the limits it refreshes, not after the pager.
     private var refresh: some View {
-        Button(intent: RefreshUsageIntent()) {
+        Button(intent: RefreshQuotaIntent()) {
             Image(systemName: "arrow.clockwise").sfont(size: 10, weight: .bold).foregroundStyle(.white.opacity(0.85))
                 .frame(width: 22 * k, height: 22 * k).background(Circle().fill(Color.white.opacity(0.12)))
                 .contentShape(Circle())
@@ -712,6 +720,18 @@ struct IslandBadges: View {
     }
 }
 
+/// The gear at the island's top right: opens NotchBot's settings without going through the menu bar.
+struct SettingsGear: View {
+    var body: some View {
+        Button(intent: OpenSettingsIntent()) {
+            Image(systemName: "gearshape.fill").sfont(size: 11, weight: .semibold).foregroundStyle(.white.opacity(0.85))
+                .frame(width: 24, height: 24).background(Circle().fill(Color.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Everything under the header.
 struct IslandBody: View {
     let state: NotchActivityState
@@ -767,7 +787,7 @@ struct IslandIdle: View {
                 .padding(.horizontal, 4)
             }
             if state.fiveHour != nil || state.weekly != nil {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .bottom, spacing: 16) {
                     if let f = state.fiveHour { meter("5-hour limit", f, state.fiveHourReset, hm: true) }
                     if let w = state.weekly { meter("Weekly limit", w, state.weeklyReset) }
                 }
@@ -781,9 +801,10 @@ struct IslandIdle: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label).sfont(size: 12, weight: .semibold).foregroundStyle(Island.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
-                    .monospacedDigit()
+                    .monospacedDigit().lineLimit(1).fixedSize()
             }
             Capsule().fill(Color.white.opacity(0.16)).frame(height: 6 * k)
                 .overlay(alignment: .leading) {
@@ -807,7 +828,7 @@ struct IslandIdle: View {
 /// The compact presentation: the logo on the left of the cutout, the waveform on the right.
 struct IslandCompactLeading: View {
     let state: NotchActivityState
-    var body: some View { Artwork(size: Island.compactIcon) }
+    var body: some View { Artwork(size: Island.compactIcon, badge: state.reviews) }
 }
 
 struct IslandCompactTrailing: View {

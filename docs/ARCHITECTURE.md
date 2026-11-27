@@ -51,8 +51,17 @@ user answers.
 - `UsageAggregator` sums every transcript touched in the last 8 days incrementally (offset + partial-line carry) into
   rolling 5-hour / today / 7-day token totals. "Tokens" means input + output + cache writes; cache reads are excluded
   because they dominate raw counts but barely consume quota.
-- Real quota percentages only exist in Claude Code's status line (`rate_limits`). `QuotaState.parse` discovers windows
-  by key (`five_hour`, `seven_day`, `seven_day_<model>`), so per-model limits appear automatically.
+- Plan-limit percentages come from `UsageAPI`: the endpoint Claude Code's `/usage` calls
+  (`api.anthropic.com/api/oauth/usage`), authenticated with Claude Code's OAuth token from the `Claude Code-credentials`
+  keychain item. An expired token is renewed with the refresh token and written back to that item. The app polls about
+  every five minutes and on the island's refresh button (`RefreshQuotaIntent`); failures keep the last-known
+  `QuotaState`, which is saved to `quota.json`. Nothing is requested on API billing. See SECURITY.md.
+- The optional status line (`rate_limits`) feeds the same `QuotaState` while a terminal session answers.
+  `QuotaState.parse` discovers windows by key (`five_hour`, `seven_day`, `seven_day_<model>`). A window whose reset
+  time has passed reads as 0%, not a frozen number.
+- Context-window size is never guessed: the status line's exact `context_window_size` wins, otherwise
+  `ModelCatalog` reads `runtime.max_input_tokens` per model from Claude's own cache (`~/.claude/cache/model-catalog`).
+  With neither, the context stat is omitted.
 - `PlanDetector` reads `~/.claude.json` (`oauthAccount.billingType`/`organizationType`) and the environment
   (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) to decide between subscription (hide dollars, show quota) and API billing.
 

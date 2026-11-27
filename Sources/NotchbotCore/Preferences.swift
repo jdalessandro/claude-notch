@@ -22,9 +22,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// How big the island's type and icons are: five named steps, never a pixel value.
     public enum IslandSize: Int, Codable, CaseIterable, Sendable {
         case smaller, small, standard, large, larger
-        public var scale: Double { [0.88, 0.94, 1.0, 1.12, 1.25][rawValue] }
+        public var scale: Double { [0.94, 1.0, 1.12, 1.25, 1.4][rawValue] }
         /// Session cards per page; bigger type leaves room for fewer.
-        public var maxRows: Int { rawValue >= 3 ? 2 : 3 }
+        public var maxRows: Int { rawValue >= 2 ? 2 : 3 }
         public var title: String { ["Smaller", "Small", "Default", "Large", "Larger"][rawValue] }
     }
 
@@ -34,6 +34,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var showSubagents = true
     public var showContextMeter = true
     public var showUsageCard = true
+    public var showReviewBadge = true
     // Behavior
     public var autoExpandOnEvents = true
     public var sessionRetention = SessionRetention.twelveHours
@@ -80,7 +81,7 @@ public struct Preferences: Codable, Equatable, Sendable {
             if let v = try? c.decode(T.self, forKey: AnyKey(key)) { self[keyPath: kp] = v }
         }
         load(\.islandSize, "islandSize"); load(\.showPrompt, "showPrompt"); load(\.showSubagents, "showSubagents")
-        load(\.showContextMeter, "showContextMeter"); load(\.showUsageCard, "showUsageCard")
+        load(\.showContextMeter, "showContextMeter"); load(\.showUsageCard, "showUsageCard"); load(\.showReviewBadge, "showReviewBadge")
         load(\.autoExpandOnEvents, "autoExpandOnEvents")
         load(\.sessionRetention, "sessionRetention")
         load(\.soundEnabled, "soundEnabled"); load(\.systemNotifications, "systemNotifications")
