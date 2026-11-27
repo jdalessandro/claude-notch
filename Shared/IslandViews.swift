@@ -874,20 +874,19 @@ struct Footer: View {
             row(bar: 28, size: 11, icon: true)
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
-            row(bar: 16, size: 10, icon: false, dots: state.offPageNeed == 0)
-            // Tight: a page label, a "+N need you" hint and big targets leave no room for reset times.
-            row(bar: 16, size: 10, icon: false, dots: false, resets: false)
-            // Tighter (the big size steps): a short hint and 24pt targets.
-            row(bar: 16, size: 10, icon: false, dots: false, resets: false, compact: true)
-            // Last: the hint goes too, and with it the page label's neighbour; the limits keep their bars.
-            row(bar: 12, size: 9.5, icon: false, dots: false, resets: false, compact: true, hint: false)
+            row(bar: 16, size: 10, icon: false)
+            // Tightest: the dots always win. Reset times go first, then the hint gets short, then 24pt targets, then the hint goes.
+            row(bar: 16, size: 10, icon: false, resets: false)
+            row(bar: 16, size: 10, icon: false, resets: false, hint: false)
+            row(bar: 16, size: 10, icon: false, resets: false, compact: true)
+            row(bar: 12, size: 9.5, icon: false, resets: false, compact: true, hint: false)
         }
         .padding(.horizontal, 4)
     }
 
     private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true, resets: Bool = true,
-        compact: Bool = false, hint: Bool = true
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, compact: Bool = false,
+        hint: Bool = true
     )
         -> some View
     {
@@ -895,7 +894,7 @@ struct Footer: View {
             limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh(compact: compact)
             Spacer(minLength: 0)
-            pager(dots: dots, compact: compact, hint: hint)
+            pager(compact: compact, hint: hint)
         }
     }
 
@@ -918,8 +917,8 @@ struct Footer: View {
         .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private func pager(dots: Bool, compact: Bool, hint: Bool) -> some View {
-        if state.pages > 1 { Pager(state: state, dots: dots, compact: compact, showHint: hint).fixedSize() }
+    @ViewBuilder private func pager(compact: Bool, hint: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, hint: hint, compact: compact).fixedSize() }
     }
 
     @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
@@ -1017,27 +1016,25 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
-    /// False in the tightest footer: the dots give way to the label and the "+N need you" hint.
-    var dots = true
+    /// False in the tightest footer, where the dots take the room the "+N need you" hint would use.
+    var hint = true
     /// Tight: the hint is just "+2" and the arrows are 24pt buttons whatever the scale (the least that is still a target).
     var compact = false
-    /// False in the last resort of the footer: only the arrows and the page label remain.
-    var showHint = true
+    /// At most this many dots are drawn; past it they are a window that follows the current page.
+    private static let maxDots = 8
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
-            if state.offPageNeed > 0, showHint {
+            if hint, state.offPageNeed > 0 {
                 Text(compact ? "+\(state.offPageNeed)" : "+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold)
                     .foregroundStyle(Island.amber)
                     .lineLimit(1).fixedSize().padding(.trailing, 3)
                     .accessibilityLabel("\(state.offPageNeed) more need you on other pages")
             }
-            Text("\(state.page + 1)/\(state.pages)").sfont(size: 11, weight: .medium).monospacedDigit()
-                .foregroundStyle(Island.secondary).lineLimit(1).fixedSize()
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
                 .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
-                ForEach(0..<(dots ? min(state.pages, 8) : 0), id: \.self) { i in
+                ForEach(dotWindow, id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
                         .frame(width: (i == state.page ? 12 : 5) * k, height: 5 * k)
                 }
@@ -1050,6 +1047,13 @@ struct Pager: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+    }
+
+    /// The pages that get a dot: all of them up to the cap, else a window of the cap that keeps the current page in view.
+    private var dotWindow: Range<Int> {
+        let n = min(state.pages, Self.maxDots)
+        let start = max(0, min(state.page - n / 2, state.pages - n))
+        return start..<(start + n)
     }
 
     private func arrow(_ symbol: String) -> some View {
