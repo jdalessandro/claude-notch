@@ -53,10 +53,10 @@ enum Island {
     /// The palette is semantic: each hue means one thing, and nothing else borrows it.
     ///   orange  `waiting`  waiting for you (permission, question, input)
     ///   blue    `review`   a finished turn ready for review
-    ///   grey    `running`  working (it moves with the `pulse` beat instead of changing colour)
+    ///   coral   `running`  working: the waveform and the working state, in the logo's own colour
     ///   red     `danger`   negative: Deny, failed, destructive, a nearly full limit
     ///   green   `allow`    positive: the Allow / Confirm buttons, nothing else
-    ///   coral   brand: the robot logo only
+    ///   blue    also the healthy plan-limit bars (`quotaOK`); context rings stay coral while healthy
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -65,7 +65,7 @@ enum Island {
     /// 9.9:1 on black, and clearly apart from `danger`'s red.
     static let waiting = Color(red: 1.0, green: 0.60, blue: 0.15)
     static let review = Color(red: 0.25, green: 0.56, blue: 1.0)
-    static let running = Color.white.opacity(0.7)
+    static let running = coral
     static let danger = Color(red: 1.0, green: 0.27, blue: 0.23)
     static let allow = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let secondary = Color.white.opacity(0.55)
@@ -77,10 +77,11 @@ enum Island {
     static let panelRadius: CGFloat = 12
     static let innerRadius: CGFloat = 8
 
-    /// Meters are neutral until they are filling up (orange from 75 % / 65 %, red from 90 % / 85 %).
-    static let meter = Color.white.opacity(0.85)
-    static func quota(_ f: Double) -> Color { f >= 0.9 ? danger : f >= 0.75 ? waiting : meter }
-    static func context(_ f: Double) -> Color { f > 0.85 ? danger : f > 0.65 ? waiting : meter }
+    /// Meters are coloured at every level: limit bars blue, context rings coral, turning orange (75 % / 65 %) then red
+    /// (90 % / 85 %).
+    static let quotaOK = Color(red: 0.25, green: 0.56, blue: 1.0)
+    static func quota(_ f: Double) -> Color { f >= 0.9 ? danger : f >= 0.75 ? waiting : quotaOK }
+    static func context(_ f: Double) -> Color { f > 0.85 ? danger : f > 0.65 ? waiting : coral }
     /// The danger levels, where the hue shift to red also gets a "!" so colour is not the only cue (WCAG 1.4.1).
     static func quotaDanger(_ f: Double) -> Bool { f >= 0.9 }
     static func contextDanger(_ f: Double) -> Bool { f > 0.85 }
@@ -103,7 +104,7 @@ enum Island {
 }
 
 extension NotchActivityState.Phase {
-    /// The waveform's colour: grey while agents work, orange when you are needed.
+    /// The waveform's colour: coral while agents work, orange when you are needed.
     var waveTint: Color { self == .needsYou ? Island.waiting : Island.running }
 }
 
