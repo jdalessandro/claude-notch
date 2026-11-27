@@ -104,6 +104,19 @@ struct GeneralTab: View {
             }
 
             Section {
+                LabeledContent("Menu bar in fullscreen") {
+                    HStack {
+                        Text(MenuBarSetting.isNever ? "Always visible" : "Hidden in fullscreen").foregroundStyle(.secondary)
+                        Button("Open System Settings") { MenuBarSetting.openSystemSettings() }
+                    }
+                }
+            } header: {
+                Text("Fullscreen")
+            } footer: {
+                hint("The island hides with the menu bar. Set “Automatically hide and show the menu bar” to Never to keep it visible.")
+            }
+
+            Section {
                 Toggle("Raise the island when something needs you", isOn: $settings.prefs.autoExpandOnEvents)
                 Picker("Forget idle sessions after", selection: $settings.prefs.sessionRetention) {
                     Text("1 hour").tag(Preferences.SessionRetention.oneHour)

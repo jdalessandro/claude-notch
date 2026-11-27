@@ -45,6 +45,7 @@ and drag **NotchBot** to Applications.
    island starts and the app lives in the menu bar.
 2. Click **Install hooks** (in the island footer, or *Settings ▸ Integration*).
 3. Restart any Claude sessions that were already running.
+4. To keep the island visible in fullscreen apps, set System Settings ▸ Control Center ▸ "Automatically hide and show the menu bar" to **Never**. NotchBot asks about this once on first launch and never changes the setting itself.
 
 Hooks are merged into `~/.claude/settings.json` next to any you already have, with a one-time backup at
 `settings.json.notchbot.bak`. Just want to look around first? Launch with synthetic agents:

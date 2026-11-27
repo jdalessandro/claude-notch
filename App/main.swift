@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model.reconcile()
                 if model.island.isLive { break }
             }
+            if !demo { MenuBarSetting.promptIfNeeded() }  // while still a regular, frontmost app
             if !CommandLine.arguments.contains("--regular") {
                 NSApp.setActivationPolicy(.accessory)
             }

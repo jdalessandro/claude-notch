@@ -51,6 +51,7 @@ apply immediately and persist.
 |---|---|---|
 | **Island size** | Default | Five steps: *Smaller*, *Small*, *Default*, *Large*, *Larger* (type and icons at 94%, 100%, 112%, 125%, 140%). *Large* and *Larger* show two session cards per page instead of three. |
 | **Show a review badge on the logo** | On | A red count on the compact logo for results waiting for review. |
+| **Menu bar in fullscreen** | n/a | Shows whether macOS is set to never hide the menu bar, which keeps the island visible in fullscreen apps. **Open System Settings** jumps to the pane; NotchBot only reads this setting. |
 | **Raise the island when something needs you** | On | Also raises the island when a turn finishes with a result to review. Permission requests, questions, sessions waiting for input and failed turns always raise it. |
 | **Forget idle sessions after** | 12 hours | 1 hour, 4 hours, 12 hours or 1 day. An idle session drops off the island after this long. |
 
@@ -140,6 +141,7 @@ sessions it activates the terminal app (it can't focus a specific tab).
 | Symptom | Try |
 |---|---|
 | Nothing appears | Is the app running (menu-bar robot)? Are hooks installed (*Settings ▸ Integration*)? Restart Claude sessions started before installing. |
+| Island disappears in a fullscreen app | macOS hides the menu bar there, and the island with it. Set System Settings ▸ Control Center ▸ "Automatically hide and show the menu bar" to **Never** (*Settings ▸ General ▸ Fullscreen* opens the pane). |
 | Island missing | Quit and reopen NotchBot. Starting a Live Activity needs the app in the foreground, so it can't restart itself from the background. |
 | Footer says **Update hooks**, or subagents show up late | Your hooks are from an older version. Click **Update hooks** (or *Settings ▸ Integration ▸ Reinstall*). |
 | Allow / Deny do nothing | Release builds are fine. A build from source must be signed with a real team; ad-hoc signed builds can't run App Intents. |
