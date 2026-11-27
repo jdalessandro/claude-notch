@@ -17,8 +17,8 @@ NotchBot draws a macOS Live Activity beside the camera cutout. The system owns i
 there is no hover or scrolling inside it; you interact with buttons.
 
 **Compact view.** Logo on the left, waveform on the right: one bar per working session, thinner bars for subagents.
-Coral = agents are working, amber = something needs you, dots = idle. An optional badge on the logo counts results you
-haven't reviewed.
+Grey = agents are working, orange = something needs you, dots = idle. An optional blue badge on the logo counts results
+you haven't reviewed. Red only ever means failed or destructive.
 
 **Expanded view.** It opens by itself when something needs you. From top to bottom:
 
@@ -28,7 +28,7 @@ haven't reviewed.
 3. **Session cards** (up to three per page, two at the *Large* and *Larger* sizes): name, branch, status, elapsed time,
    your prompt, current tool, context use, lines changed, tool calls, token count, and a subagent summary
    ("2 running · 1 done"). Tap a card's **Subagents** header to expand every subagent with what it is doing, its tool-call
-   count and its last result. A second permission request can be answered inline on its row.
+   count and its last result. Other waiting sessions show **Review**, which moves their request to the main card; approvals are answered only there.
 4. **Footer**: plan limits with reset countdowns, a refresh button, the page indicator, and (if hooks are missing or
    outdated) an **Install hooks** / **Update hooks** button. The gear opens Settings; **⋯** has *Settings…*,
    *Mark all reviewed* and *Quit NotchBot*.
@@ -107,7 +107,7 @@ the refresh button; the last numbers are saved and survive restarts, and a faile
 reset time has passed shows 0% rather than a frozen number. Nothing is requested on API (pay-as-you-go) billing, which
 has no plan limits.
 
-Bars are blue, amber from 75% and red from 90%. The **Limits | Tokens** toggle switches to token totals for the last
+Bars are grey, orange from 75% and red from 90% (with a "!" at red). The **Limits | Tokens** toggle switches to token totals for the last
 5 hours, today and 7 days (input + output + cache writes; cache reads are excluded because they barely use quota).
 
 > **Privacy.** This is the only network request NotchBot makes. The token is sent only to Anthropic and never logged.

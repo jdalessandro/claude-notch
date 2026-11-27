@@ -50,15 +50,24 @@ enum Island {
     /// the logo's height, so the two always read as a pair.
     static let compactIcon: CGFloat = 16
     static let compactWaveRatio: CGFloat = 0.7
+    /// The palette is semantic: each hue means one thing, and nothing else borrows it.
+    ///   orange  `waiting`  waiting for you (permission, question, input)
+    ///   blue    `review`   a finished turn ready for review
+    ///   grey    `running`  working (it moves with the `pulse` beat instead of changing colour)
+    ///   red     `danger`   failed, destructive, a nearly full limit
+    ///   green   `allow`    the affirmative Allow button, nothing else
+    ///   coral   brand: the robot logo only
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
     static let robotLight = Color(red: 0.933, green: 0.604, blue: 0.486)  // #EE9A7C
     static let robotShadow = Color(red: 0.663, green: 0.333, blue: 0.227)  // #A9553A
-    static let amber = Color(red: 1.0, green: 0.70, blue: 0.25)
-    static let green = Color(red: 0.20, green: 0.78, blue: 0.35)
-    static let red = Color(red: 1.0, green: 0.27, blue: 0.23)
-    static let blue = Color(red: 0.25, green: 0.56, blue: 1.0)
+    /// 9.9:1 on black, and clearly apart from `danger`'s red.
+    static let waiting = Color(red: 1.0, green: 0.60, blue: 0.15)
+    static let review = Color(red: 0.25, green: 0.56, blue: 1.0)
+    static let running = Color.white.opacity(0.7)
+    static let danger = Color(red: 1.0, green: 0.27, blue: 0.23)
+    static let allow = Color(red: 0.20, green: 0.78, blue: 0.35)
     static let secondary = Color.white.opacity(0.55)
     /// 5.3:1 on the black island and on `surface` (WCAG 1.4.3 needs 4.5:1 for 11pt text).
     static let tertiary = Color.white.opacity(0.5)
@@ -68,8 +77,10 @@ enum Island {
     static let panelRadius: CGFloat = 12
     static let innerRadius: CGFloat = 8
 
-    static func quota(_ f: Double) -> Color { f >= 0.9 ? red : f >= 0.75 ? amber : blue }
-    static func context(_ f: Double) -> Color { f > 0.85 ? red : f > 0.65 ? amber : coral }
+    /// Meters are neutral until they are filling up (orange from 75 % / 65 %, red from 90 % / 85 %).
+    static let meter = Color.white.opacity(0.85)
+    static func quota(_ f: Double) -> Color { f >= 0.9 ? danger : f >= 0.75 ? waiting : meter }
+    static func context(_ f: Double) -> Color { f > 0.85 ? danger : f > 0.65 ? waiting : meter }
     /// The danger levels, where the hue shift to red also gets a "!" so colour is not the only cue (WCAG 1.4.1).
     static func quotaDanger(_ f: Double) -> Bool { f >= 0.9 }
     static func contextDanger(_ f: Double) -> Bool { f > 0.85 }
@@ -92,17 +103,17 @@ enum Island {
 }
 
 extension NotchActivityState.Phase {
-    /// The waveform's colour: coral while agents work, amber when you are needed.
-    var waveTint: Color { self == .needsYou ? Island.amber : Island.coral }
+    /// The waveform's colour: grey while agents work, orange when you are needed.
+    var waveTint: Color { self == .needsYou ? Island.waiting : Island.running }
 }
 
 extension NotchActivityState.Kind {
     var tint: Color {
         switch self {
-        case .approval, .question, .input: Island.amber
-        case .failed: Island.red
-        case .review: Island.green
-        case .working: Island.coral
+        case .approval, .question, .input: Island.waiting
+        case .failed: Island.danger
+        case .review: Island.review
+        case .working: Island.running
         case .idle: Color.white.opacity(0.3)
         }
     }
@@ -186,10 +197,10 @@ struct RobotView: View {
 }
 
 /// Stands in for album art: the robot mark on its own, no tile. It does not change colour with state;
-/// the waveform carries that, and the small green badge counts sessions waiting for review.
+/// the waveform carries that, and the small blue badge counts sessions waiting for review.
 struct Artwork: View {
     var size: CGFloat
-    /// Finished sessions waiting for review; a small green count on the robot's top right (red is kept for failures).
+    /// Finished sessions waiting for review; a small blue count on the robot's top right.
     var badge = 0
     var body: some View {
         // The badge sits on the corner and the robot is inset to make room, because the compact region clips anything
@@ -203,10 +214,10 @@ struct Artwork: View {
                 if badge > 0 {
                     Text(badge > 9 ? "9+" : "\(badge)")
                         .font(.system(size: d * 0.62, weight: .bold, design: .rounded)).monospacedDigit()
-                        .foregroundStyle(.white).minimumScaleFactor(0.7).lineLimit(1)
+                        .foregroundStyle(.black).minimumScaleFactor(0.7).lineLimit(1)
                         .frame(minWidth: d, minHeight: d)
                         .padding(.horizontal, badge > 9 ? d * 0.12 : 0)
-                        .background(Capsule().fill(Island.green))
+                        .background(Capsule().fill(Island.review))
                         .overlay(Capsule().strokeBorder(.black, lineWidth: max(1, d * 0.1)))
                 }
             }
@@ -285,7 +296,7 @@ struct AgentWave: View {
 }
 
 extension AgentWave {
-    /// Bars for the working sessions and their subagents. When nothing runs but something waits on you, one amber bar
+    /// Bars for the working sessions and their subagents. When nothing runs but something waits on you, one orange bar
     /// per waiting session keeps the island visibly asking.
     init(state: NotchActivityState, height: CGFloat = 18) {
         let agents = state.working > 0 ? state.working : (state.phase == .needsYou ? state.needsYou : 0)
@@ -298,8 +309,9 @@ extension AgentWave {
 
 // MARK: - Buttons
 
-/// A pill button label. `filled` uses the tint as the fill with black text (white fails contrast on coral and green);
-/// otherwise a quiet translucent fill. The tap target is at least 24pt tall whatever the scale (WCAG 2.5.8).
+/// A pill button label. `filled` uses the tint as the fill with black text (white fails contrast on green and red);
+/// otherwise a quiet translucent fill. A white fill is the neutral primary action; green is only for Allow, red only
+/// for confirming a destructive one. The tap target is at least 24pt tall whatever the scale (WCAG 2.5.8).
 struct Pill: View {
     let title: String
     var tint: Color = .white
@@ -431,10 +443,11 @@ struct PromptPanel: View {
             HStack(spacing: 6) {
                 Text(p.session).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
                 Spacer(minLength: 6)
+                // Neutral: the orange border already says this is waiting on you.
                 if p.isQuestion {
-                    Badge("Question", tint: Island.amber, icon: "questionmark.bubble.fill")
+                    Badge("Question", icon: "questionmark.bubble.fill")
                 } else {
-                    Badge(p.subagent.map { "\($0) asks" } ?? "Needs approval", tint: Island.amber, icon: "lock.fill")
+                    Badge(p.subagent.map { "\($0) asks" } ?? "Needs approval", icon: "lock.fill")
                 }
             }
             HStack(spacing: 6) {
@@ -445,7 +458,7 @@ struct PromptPanel: View {
                     Badge(p.tool, icon: "terminal.fill")
                 }
                 Spacer(minLength: 0)
-                if p.destructive { Badge("Destructive", tint: Island.red, icon: "exclamationmark.triangle.fill") }
+                if p.destructive { Badge("Destructive", tint: Island.danger, icon: "exclamationmark.triangle.fill") }
             }
             if p.isQuestion { question } else { permission }
             actions
@@ -455,7 +468,7 @@ struct PromptPanel: View {
         .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
         .overlay(
             RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                .strokeBorder(Island.amber.opacity(0.45), lineWidth: 1))
+                .strokeBorder(Island.waiting.opacity(0.6), lineWidth: 1))
     }
 
     private var question: some View {
@@ -485,6 +498,8 @@ struct PromptPanel: View {
         .background(RoundedRectangle(cornerRadius: Island.innerRadius, style: .continuous).fill(Color.black.opacity(0.55)))
     }
 
+    /// The only place an approval is answered. A destructive request makes Deny the prominent button and Allow a
+    /// two-step: "Allow", then "Confirm" (red, for a few seconds). "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
@@ -496,7 +511,7 @@ struct PromptPanel: View {
                 .sfont(size: 12).foregroundStyle(Island.secondary)
                 Spacer(minLength: 8)
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId)) {
-                    Pill(title: "Open", tint: Island.coral, filled: true, height: 26, stretch: false)
+                    Pill(title: "Open", tint: .white, filled: true, height: 26, stretch: false)
                 }
                 .accessibilityLabel("Open \(p.session)")
             } else if p.isQuestion {
@@ -506,11 +521,13 @@ struct PromptPanel: View {
                 }
                 .accessibilityLabel("Not now: \(p.session)")
                 Button(intent: OpenSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Answer in Claude", tint: Island.coral, filled: true, height: 26, stretch: false)
+                    Pill(title: "Answer in Claude", tint: .white, filled: true, height: 26, stretch: false)
                 }
                 .accessibilityLabel("Answer in Claude: \(p.session)")
             } else {
-                if let scope = p.sessionScope {
+                if p.confirming {
+                    Text("Tap Confirm to run it").sfont(size: 11, weight: .medium).foregroundStyle(Island.secondary).lineLimit(1)
+                } else if let scope = p.sessionScope {
                     // Quiet secondary option: a text link, not a third button. Names exactly what it covers.
                     Button(intent: AllowSessionIntent(sessionId: p.sessionId, requestId: p.requestId)) {
                         Text("Allow “\(scope)” for this session").sfont(size: 11, weight: .medium)
@@ -519,13 +536,24 @@ struct PromptPanel: View {
                 }
                 Spacer(minLength: 8)
                 Button(intent: DenyIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Deny", tint: Island.red, height: 26, stretch: false)
+                    Pill(title: "Deny", tint: .white, filled: p.destructive, height: 26, stretch: false)
                 }
                 .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    Pill(title: "Allow", tint: Island.green, filled: true, height: 26, stretch: false)
+                    if p.confirming {
+                        Pill(title: "Confirm", tint: Island.danger, filled: true, height: 26, stretch: false)
+                    } else if p.destructive {
+                        Pill(title: "Allow", tint: .white, height: 26, stretch: false)
+                    } else {
+                        Pill(title: "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
+                    }
                 }
-                .accessibilityLabel("Allow \(Island.target(p.tool, p.text))")
+                .accessibilityLabel(
+                    p.confirming
+                        ? "Confirm allowing the destructive command \(Island.target(p.tool, p.text))"
+                        : p.destructive
+                            ? "Allow destructive command \(Island.target(p.tool, p.text)), asks to confirm"
+                            : "Allow \(Island.target(p.tool, p.text))")
             }
         }
         .buttonStyle(.plain)
@@ -584,50 +612,38 @@ struct SessionRow: View {
         .overlay {
             if row.kind == .review {
                 RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                    .strokeBorder(Island.green.opacity(0.45), lineWidth: 1)
+                    .strokeBorder(Island.review.opacity(0.5), lineWidth: 1)
             }
         }
     }
 
     @ViewBuilder private var status: some View {
         if row.kind == .working, let since = row.since {
-            Badge(tint: Island.coral) {
+            Badge {
                 Text(since, style: .timer).multilineTextAlignment(.center).frame(width: 36 * k)
             }
         } else if row.kind == .approval, row.destructive {
-            Badge("Destructive", tint: Island.red, icon: "exclamationmark.triangle.fill")
+            Badge("Destructive", tint: Island.danger, icon: "exclamationmark.triangle.fill")
         } else {
-            Badge(row.status, tint: row.kind == .idle ? nil : row.kind.tint)
+            Badge(row.status, tint: row.kind == .idle || row.kind == .working ? nil : row.kind.tint)
         }
     }
 
-    /// Actions for a session waiting on you, on the detail line.
+    /// What a session waiting on you offers on its detail line. Rows never answer: a request goes to the card
+    /// ("Review"), anything else opens the session. Both are quiet neutral pills, so no row looks like a decision.
     @ViewBuilder private var trailing: some View {
         HStack(spacing: 5) {
             switch row.kind {
-            case .approval:
-                if let r = row.requestId, row.reviewFirst {
-                    // Too long for one line, or high-risk: read the whole command on the card before answering.
+            case .approval, .question:
+                if let r = row.requestId {
                     Button(intent: ReviewIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Review", tint: row.destructive ? Island.red : Island.amber, filled: true, height: 24, stretch: false)
+                        Pill(title: "Review", tint: .white, height: 24, stretch: false)
                     }
-                } else if let r = row.requestId {
-                    Button(intent: DenyIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Deny", tint: Island.red, height: 24, stretch: false)
-                    }
-                    .accessibilityLabel("Deny \(Island.target(row.tool ?? "request", row.detail))")
-                    Button(intent: AllowIntent(sessionId: row.id, requestId: r)) {
-                        Pill(title: "Allow", tint: Island.green, filled: true, height: 24, stretch: false)
-                    }
-                    .accessibilityLabel("Allow \(Island.target(row.tool ?? "request", row.detail))")
+                    .accessibilityLabel("Review \(row.kind == .question ? "question" : "request") from \(row.name)")
+                    .accessibilityHint("Shows it in the main card, where you can answer")
                 } else {
                     openButton
                 }
-            case .question:
-                Button(intent: OpenSessionIntent(sessionId: row.id, requestId: row.requestId ?? "")) {
-                    Pill(title: "Answer", tint: Island.coral, filled: true, height: 24, stretch: false)
-                }
-                .accessibilityLabel("Answer \(row.name)")
             case .input, .failed: openButton
             case .review, .working, .idle:
                 EmptyView()
@@ -661,11 +677,10 @@ struct SessionRow: View {
                 }
                 if lines, row.linesAdded + row.linesRemoved > 0 {
                     Stat(label: "lines", showLabel: labels, spoken: "\(row.linesAdded) lines added, \(row.linesRemoved) removed") {
-                        Text("+\(row.linesAdded)").foregroundStyle(Island.green)
-                            + Text(" −\(row.linesRemoved)").foregroundStyle(Island.red)
+                        Text("+\(row.linesAdded)") + Text(" −\(row.linesRemoved)").foregroundStyle(Island.secondary)
                     }
                 }
-                // Neutral until the window is filling up (amber > 65 %, red > 85 %).
+                // Neutral until the window is filling up (orange > 65 %, red > 85 %).
                 if let ctx = row.context {
                     let full = ctx > 0.65
                     Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil, showLabel: labels) {
@@ -683,7 +698,7 @@ struct SessionRow: View {
         return Stat(
             value: "\(running ? row.subagents : row.subagentTotal)",
             label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
-            tint: running ? Island.coral : nil, showLabel: labels
+            tint: nil, showLabel: labels
         ) {
             Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
         }
@@ -691,7 +706,7 @@ struct SessionRow: View {
 
     private var openButton: some View {
         Button(intent: OpenSessionIntent(sessionId: row.id)) {
-            Pill(title: "Open", tint: Island.coral, filled: true, height: 24, stretch: false)
+            Pill(title: "Open", tint: .white, height: 24, stretch: false)
         }
         .accessibilityLabel("Open \(row.name)")
     }
@@ -736,7 +751,7 @@ extension NotchActivityState.Row {
 // MARK: - Subagent tree
 
 /// One session's subagents, in place of the session list: the main agent, then each subagent on a line with its type,
-/// state, current tool and elapsed time. A subagent waiting on you is amber. Fixed line count (the island clips).
+/// state, current tool and elapsed time. A subagent waiting on you is orange. Fixed line count (the island clips).
 struct SubagentTree: View {
     let focus: NotchActivityState.Focus
     @Environment(\.islandScale) private var k
@@ -758,7 +773,7 @@ struct SubagentTree: View {
                     Stat(
                         value: "\(focus.running > 0 ? focus.running : focus.total)",
                         label: focus.running > 0 ? (focus.running == 1 ? "subagent" : "subagents") : "done",
-                        tint: focus.running > 0 ? Island.coral : nil, showLabel: true
+                        tint: nil, showLabel: true
                     ) {
                         Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
                     }
@@ -782,7 +797,7 @@ struct SubagentTree: View {
         .overlay {
             if focus.lines.contains(where: { $0.state == .waiting }) {
                 RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
-                    .strokeBorder(Island.amber.opacity(0.45), lineWidth: 1)
+                    .strokeBorder(Island.waiting.opacity(0.45), lineWidth: 1)
             }
         }
     }
@@ -795,10 +810,10 @@ struct TreeLineView: View {
 
     private var tint: Color {
         switch line.state {
-        case .running: Island.coral
-        case .waiting: Island.amber
-        case .done: Island.green
-        case .failed: Island.red
+        case .running: Island.running
+        case .waiting: Island.waiting
+        case .done: Island.secondary
+        case .failed: Island.danger
         }
     }
 
@@ -808,12 +823,12 @@ struct TreeLineView: View {
             Text(line.id == 0 ? "" : last ? "└" : "├").sfont(size: 12, design: .monospaced)
                 .foregroundStyle(Island.tertiary).frame(width: 12 * k)
             indicator
-            Text(line.name).sfont(size: 12, weight: .semibold).foregroundStyle(line.state == .waiting ? Island.amber : .white)
+            Text(line.name).sfont(size: 12, weight: .semibold).foregroundStyle(line.state == .waiting ? Island.waiting : .white)
                 .lineLimit(1).fixedSize()
-            Text(line.detail).sfont(size: 11.5).foregroundStyle(line.state == .waiting ? Island.amber.opacity(0.9) : Island.secondary)
+            Text(line.detail).sfont(size: 11.5).foregroundStyle(line.state == .waiting ? Island.waiting.opacity(0.9) : Island.secondary)
                 .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
             elapsed.sfont(size: 11, weight: .medium).monospacedDigit().foregroundStyle(
-                line.state == .waiting ? Island.amber : Island.tertiary
+                line.state == .waiting ? Island.waiting : Island.tertiary
             )
             .lineLimit(1).fixedSize()
         }
@@ -878,14 +893,14 @@ struct Footer: View {
         }
     }
 
-    /// Sits right after the limits it refreshes, not after the pager. Amber with an exclamation when the last refresh
-    /// failed, coral while one is running.
+    /// Sits right after the limits it refreshes, not after the pager. Orange with an exclamation when the last refresh
+    /// failed, bright while one is running.
     private var refresh: some View {
         let note = state.limitsNote
         return Button(intent: RefreshQuotaIntent()) {
             Image(systemName: note == .failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.clockwise")
                 .sfont(size: 10, weight: .bold)
-                .foregroundStyle(note == .failed ? Island.amber : note == .refreshing ? Island.coral : .white.opacity(0.85))
+                .foregroundStyle(note == .failed ? Island.waiting : note == .refreshing ? .white : .white.opacity(0.85))
                 .frame(width: 22 * k, height: 22 * k)
                 .background(Circle().fill(Color.white.opacity(note == .refreshing ? 0.2 : 0.12)))
                 .frame(minWidth: 24, minHeight: 24)
@@ -933,7 +948,7 @@ struct Footer: View {
                 }
             Text("\(Int((f * 100).rounded()))%").foregroundStyle(.white.opacity(0.85))
             if Island.quotaDanger(f) {
-                Image(systemName: "exclamationmark").sfont(size: size - 1, weight: .black).foregroundStyle(Island.red)
+                Image(systemName: "exclamationmark").sfont(size: size - 1, weight: .black).foregroundStyle(Island.danger)
             }
             if let reset, let left = Island.shortUntil(reset, hm: hm) {
                 if words {
@@ -1001,7 +1016,7 @@ struct Pager: View {
     var body: some View {
         HStack(spacing: 5) {
             if state.offPageNeed > 0 {
-                Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.amber)
+                Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.waiting)
                     .lineLimit(1).fixedSize().padding(.trailing, 3)
             }
             Text("\(state.page + 1)/\(state.pages)").sfont(size: 11, weight: .medium).monospacedDigit()
@@ -1072,8 +1087,8 @@ struct IslandBadges: View {
 
     private func badges(working: Bool, subagents: Bool) -> some View {
         HStack(spacing: 6) {
-            if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.amber) }
-            if working, state.working > 0 { Badge("\(state.working) working", tint: Island.coral) }
+            if state.needsYou > 0 { Badge("\(state.needsYou) need\(state.needsYou == 1 ? "s" : "") you", tint: Island.waiting) }
+            if working, state.working > 0 { Badge("\(state.working) working") }
             if subagents, state.subagentsRunning > 0 {
                 Badge(
                     "\(state.subagentsRunning) subagent\(state.subagentsRunning == 1 ? "" : "s")",
@@ -1115,7 +1130,7 @@ struct IslandBody: View {
 struct StaleNotice: View {
     var body: some View {
         Label("Paused — open NotchBot to refresh", systemImage: "pause.circle.fill")
-            .sfont(size: 11, weight: .medium).foregroundStyle(Island.amber).lineLimit(1).padding(.horizontal, 4)
+            .sfont(size: 11, weight: .medium).foregroundStyle(Island.waiting).lineLimit(1).padding(.horizontal, 4)
     }
 }
 
@@ -1160,7 +1175,7 @@ struct IslandIdle: View {
                         VStack(alignment: .leading, spacing: 2) {
                             if header { Text("Not watching").sfont(size: 16, weight: .semibold).foregroundStyle(.white) }
                             Label("Hooks not installed — open Settings", systemImage: "gearshape.fill")
-                                .sfont(size: 13, weight: .medium).foregroundStyle(Island.amber)
+                                .sfont(size: 13, weight: .medium).foregroundStyle(Island.waiting)
                         }
                         .lineLimit(1)
                         Spacer(minLength: 0)
@@ -1201,7 +1216,7 @@ struct IslandIdle: View {
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 if Island.quotaDanger(f) {
-                    Image(systemName: "exclamationmark").sfont(size: 13, weight: .black).foregroundStyle(Island.red)
+                    Image(systemName: "exclamationmark").sfont(size: 13, weight: .black).foregroundStyle(Island.danger)
                 }
                 Text("\(Int((f * 100).rounded()))%").sfont(size: 15, weight: .semibold).foregroundStyle(.white)
                     .monospacedDigit().lineLimit(1).fixedSize()
@@ -1246,7 +1261,7 @@ struct IslandCompactTrailing: View {
                 Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 12, weight: .bold, design: .rounded))
                     .monospacedDigit().minimumScaleFactor(0.7).lineLimit(1)
             }
-            .foregroundStyle(Island.amber).frame(width: 30, height: Island.compactIcon)
+            .foregroundStyle(Island.waiting).frame(width: 30, height: Island.compactIcon)
         } else {
             AgentWave(state: state, height: h).frame(width: 30, height: h)
         }
@@ -1264,7 +1279,7 @@ struct IslandMinimal: View {
                 Text(state.needsYou > 9 ? "9+" : "\(state.needsYou)").font(.system(size: 10, weight: .bold, design: .rounded))
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
-            .foregroundStyle(Island.amber).frame(width: Island.compactIcon, height: Island.compactIcon)
+            .foregroundStyle(Island.waiting).frame(width: Island.compactIcon, height: Island.compactIcon)
         } else {
             Artwork(size: Island.compactIcon, badge: state.compactReviews)
         }

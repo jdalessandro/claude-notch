@@ -9,6 +9,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
   `docs/GUIDE.md`; build-from-source steps moved to CONTRIBUTING; fresh screenshots.
 
 ### Changed
+- **Island colours are semantic**: orange = waiting for you, blue = ready for review, grey = running, red = failed or
+  destructive, green = the Allow button only; coral stays on the logo. Limit and context meters are grey until orange
+  (75% / 65%) and red (90% / 85%, with a "!"). Only the "need you" count is tinted in the header.
+- **One approval pattern**: only the featured card answers. Session rows show a quiet **Review** (or **Open**) instead of
+  inline Deny / Allow. On a destructive command Deny is the prominent button and Allow takes a second tap (**Confirm**,
+  lapses after 6 s); "Allow for session" stays hidden for it.
 - **Branding**: the name is styled **NotchBot** in the UI and docs (identifiers `Notchbot.app`, `notchbot-hook`,
   `dev.notchbot.app` keep the lowercase form), and the robot logo sits at the top of the README.
 - **Renamed from Claude Notch to NotchBot**, with a new pixel-art robot logo, so the name and mark no longer lean on
