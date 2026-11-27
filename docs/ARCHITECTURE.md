@@ -1,23 +1,23 @@
 # Architecture
 
 ```
-claude (CLI / desktop)                              ClaudeNotch.app
+claude (CLI / desktop)                              Notchbot.app
    | hook event (stdin JSON)                          |- NotchServer     Unix socket (0600), ordered delivery
    v                                                  |- SessionStore    pure reducer: events -> sessions
-claude-notch-hook --- notch.sock --------------->     |- TranscriptTailer  per-session usage / title / cost
+notchbot-hook --- notch.sock --------------->     |- TranscriptTailer  per-session usage / title / cost
    ^  PermissionRequest: blocks until answered        |- UsageAggregator   quota windows from all transcripts
    '------------- Allow / Deny <---------------       `- ActivityHost      Live Activity (widget extension draws it)
-claude status line --- claude-notch-hook --statusline -->  QuotaState (rate limits, exact context window)
+claude status line --- notchbot-hook --statusline -->  QuotaState (rate limits, exact context window)
 ```
 
 ## Modules
 
-- **ClaudeNotchCore** has no UI dependencies. `SessionStore.apply(_:)` is a pure function of (state, event), so the whole
+- **NotchbotCore** has no UI dependencies. `SessionStore.apply(_:)` is a pure function of (state, event), so the whole
   state machine is unit-tested without a display. IPC, the settings-file installer, transcript parsing and
   preferences are also here.
-- **claude-notch-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
+- **notchbot-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
   `--interactive`) waits for a reply, which it prints in Claude Code's decision schema.
-- **ClaudeNotch** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
+- **Notchbot** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
   (`@Observable`) is the single source of truth; the Live Activity and the *Sessions* window both render from it.
 
 ## Event model
@@ -46,7 +46,7 @@ user answers.
 - Per-session usage comes from the session transcript (`message.usage`, de-duplicated by `requestId` because one API
   call is written as several lines). Context size is the latest main-thread prompt size; subagent traffic is excluded.
 - Cost prefers Claude Code's own `cost-state.totalCostUSD`; otherwise a price table estimate. Pricing overrides go in
-  `~/Library/Application Support/ClaudeNotch/pricing.json`, shaped like `PriceTable`:
+  `~/Library/Application Support/Notchbot/pricing.json`, shaped like `PriceTable`:
   `{"order": ["opus"], "families": {"opus": {"input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75}}, "fallback": {...}}`.
 - `UsageAggregator` sums every transcript touched in the last 8 days incrementally (offset + partial-line carry) into
   rolling 5-hour / today / 7-day token totals. "Tokens" means input + output + cache writes; cache reads are excluded

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 @Suite struct QuotaRobustness {
     func parse(_ json: String) throws -> QuotaState? { QuotaState.parse(try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))) }

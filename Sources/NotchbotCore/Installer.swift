@@ -48,7 +48,7 @@ struct SettingsFile {
         if now != mtime { throw InstallerError.changedWhileWriting }
 
         var backup: URL?
-        let b = url.appendingPathExtension("claude-notch.bak")
+        let b = url.appendingPathExtension("notchbot.bak")
         if existed, !FileManager.default.fileExists(atPath: b.path) {
             try FileManager.default.copyItem(at: url, to: b)
             backup = b
@@ -61,13 +61,15 @@ struct SettingsFile {
     }
 }
 
-/// Adds / removes Claude Notch hooks in `~/.claude/settings.json` without disturbing anything else
+/// Adds / removes Notchbot hooks in `~/.claude/settings.json` without disturbing anything else
 /// (other tools such as terminal integrations register hooks on the same events).
 ///
 /// Notes: the file is re-serialized with sorted keys, so a hand-edited file may be reordered/reindented on the
-/// first change. The original is kept once as `settings.json.claude-notch.bak`.
+/// first change. The original is kept once as `settings.json.notchbot.bak`.
 public enum HookInstaller {
-    public static let marker = "claude-notch-hook"
+    public static let marker = "notchbot-hook"
+    /// The executable's name before the app was renamed; entries written by older builds are still ours to replace or remove.
+    static let legacyMarkers = ["claude-notch-hook"]
     public static let observedEvents = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
         "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "PreCompact", "SessionEnd",
@@ -82,7 +84,7 @@ public enum HookInstaller {
 
     // MARK: command strings
 
-    /// `"/path with spaces/claude-notch-hook"`, with the characters the shell treats specially inside
+    /// `"/path with spaces/notchbot-hook"`, with the characters the shell treats specially inside
     /// double quotes escaped.
     static func shellQuoted(_ path: String) -> String {
         var out = "\""
@@ -108,11 +110,12 @@ public enum HookInstaller {
         return out
     }
 
-    /// True only for a hook whose executable is named exactly `claude-notch-hook`; a foreign command that
+    /// True only for a hook whose executable is named exactly `notchbot-hook`; a foreign command that
     /// merely mentions the name (a wrapper script, an argument) is not ours.
     static func isOurs(_ command: String?) -> Bool {
         guard let command else { return false }
-        return (executable(of: command) as NSString).lastPathComponent == marker
+        let name = (executable(of: command) as NSString).lastPathComponent
+        return name == marker || legacyMarkers.contains(name)
     }
 
     // MARK: shape checks (throw instead of silently overwriting something unexpected)

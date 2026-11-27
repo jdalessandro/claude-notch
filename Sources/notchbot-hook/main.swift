@@ -1,8 +1,8 @@
-import ClaudeNotchCore
 import Foundation
+import NotchbotCore
 
-// claude-notch-hook: invoked by Claude Code for each hook event.
-// Reads the event JSON on stdin, forwards it to the ClaudeNotch app over a Unix socket, and exits 0.
+// notchbot-hook: invoked by Claude Code for each hook event.
+// Reads the event JSON on stdin, forwards it to the Notchbot app over a Unix socket, and exits 0.
 // Design rule: this process must NEVER slow down or break a Claude session. If the app is not
 // running, it silently does nothing.
 //
@@ -58,7 +58,7 @@ switch reply.decision {
 case .ask: exit(0)  // no output => Claude Code shows its normal prompt
 case .allow, .deny:
     var decision: [String: Any] = ["behavior": reply.decision.rawValue]
-    if reply.decision == .deny { decision["message"] = reply.reason ?? "Denied from Claude Notch" }
+    if reply.decision == .deny { decision["message"] = reply.reason ?? "Denied from Notchbot" }
     let out: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision]]
     if let d = try? JSONSerialization.data(withJSONObject: out) { FileHandle.standardOutput.write(d) }
     exit(0)

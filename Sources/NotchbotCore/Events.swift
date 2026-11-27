@@ -166,7 +166,7 @@ public struct HookPayload: Codable, Sendable, Equatable {
     }
 }
 
-/// Wire message from `claude-notch-hook` to the app (one JSON object per line).
+/// Wire message from `notchbot-hook` to the app (one JSON object per line).
 public struct HookEnvelope: Codable, Sendable, Equatable {
     public var payload: HookPayload
     public var receivedAt: Date

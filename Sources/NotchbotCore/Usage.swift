@@ -18,7 +18,7 @@ public struct TokenUsage: Sendable, Equatable, Codable {
 }
 
 /// USD per million tokens. These are *estimates* keyed by model family; override via
-/// `~/Library/Application Support/ClaudeNotch/pricing.json` (see docs/ARCHITECTURE.md).
+/// `~/Library/Application Support/Notchbot/pricing.json` (see docs/ARCHITECTURE.md).
 public struct ModelPrice: Codable, Sendable, Equatable {
     public var input: Double, output: Double, cacheRead: Double, cacheWrite: Double
     public init(input: Double, output: Double, cacheRead: Double, cacheWrite: Double) {

@@ -1,14 +1,14 @@
 import ActivityKit
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 import WidgetKit
 
-@main struct ClaudeNotchWidgetBundle: WidgetBundle {
-    var body: some Widget { ClaudeNotchActivity() }
+@main struct NotchbotWidgetBundle: WidgetBundle {
+    var body: some Widget { NotchbotActivity() }
 }
 
 /// The island itself. The views are in Shared/IslandViews.swift so the app can snapshot them.
-struct ClaudeNotchActivity: Widget {
+struct NotchbotActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NotchAttributes.self) { ctx in
             IslandExpanded(state: ctx.state).islandScale(ctx.state.scale).padding(16).opacity(ctx.isStale ? 0.6 : 1)
@@ -47,7 +47,7 @@ struct ClaudeNotchActivity: Widget {
             } compactTrailing: {
                 IslandCompactTrailing(state: s)
             } minimal: {
-                Artwork(size: 17)
+                Artwork(size: 16)
             }
             .keylineTint(Island.coral)
         }
