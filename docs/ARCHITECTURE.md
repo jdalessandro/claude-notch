@@ -18,7 +18,7 @@ claude status line --- notchbot-hook --statusline -->  QuotaState (rate limits, 
 - **notchbot-hook** reads one JSON event on stdin, sends it, and exits 0. Only `PermissionRequest` (with
   `--interactive`) waits for a reply, which it prints in Claude Code's decision schema.
 - **Notchbot** (`App/`, `Shared/`, `Widget/`, built by the generated Xcode project) owns presentation. `AppModel`
-  (`@Observable`) is the single source of truth; the Live Activity and the *Sessions* window both render from it.
+  (`@Observable`) is the single source of truth; the Live Activity renders the Live Activity from it.
 
 ## Event model
 
