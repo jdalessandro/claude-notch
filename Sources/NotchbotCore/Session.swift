@@ -446,14 +446,17 @@ public struct SessionStore: Sendable {
     }
 
     /// Synthetic numbers for `--demo` mode and UI previews.
-    public mutating func setDemoUsage(_ id: String, ctxFraction: Double, cost: Double, tokens: Int) {
+    public mutating func setDemoUsage(
+        _ id: String, ctxFraction: Double, cost: Double, tokens: Int, branch: String = "main", lines: (added: Int, removed: Int) = (0, 0)
+    ) {
         guard var s = sessions[id] else { return }
         // The window comes from the real model catalog; if it's unavailable the demo shows no context gauge.
         s.contextWindow = catalog.window(for: "claude-opus-5-5")
         s.contextTokens = Int(ctxFraction * Double(s.contextWindow ?? 0))
         s.reportedCostUSD = cost
         s.usage = TokenUsage(input: tokens / 20, output: tokens / 10, cacheRead: tokens * 8 / 10, cacheWrite: tokens / 20)
-        s.model = "claude-opus-5-5"; s.gitBranch = "main"; s.workingSince = s.status == .working ? Date().addingTimeInterval(-74) : nil
+        s.model = "claude-opus-5-5"; s.gitBranch = branch; s.linesAdded = lines.added; s.linesRemoved = lines.removed
+        s.workingSince = s.status == .working ? Date().addingTimeInterval(-74) : nil
         sessions[id] = s
     }
 

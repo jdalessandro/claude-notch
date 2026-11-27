@@ -582,14 +582,31 @@ final class AppModel {
                 $0.lastAssistantMessage =
                     "Added docs/migrating-to-v2.md covering the renamed config keys and the new retry defaults, and linked it from the sidebar under Guides."
             })
+        // mobile-app: Claude stopped and is waiting for the user's input
+        _ = store.apply(e("UserPromptSubmit", "mobile-app") { $0.prompt = "Add pull-to-refresh to the feed" })
+        _ = store.apply(
+            e("Notification", "mobile-app") {
+                $0.notificationType = "idle_prompt"; $0.message = "Claude is waiting for your input"
+            })
+        // data-pipeline: the turn ended on an API error
+        _ = store.apply(e("UserPromptSubmit", "data-pipeline") { $0.prompt = "Backfill the events table" })
+        _ = store.apply(e("StopFailure", "data-pipeline") { $0.message = "API Error: 529 Overloaded. Please try again." })
         // notes-cli: finished and already reviewed -> idle
         _ = store.apply(e("Stop", "notes-cli"))
         store.markSeen("notes-cli")
-        for (id, ctx, cost, tok) in [
-            ("payments-api", 0.42, 1.87, 412_000), ("web-dashboard", 0.71, 3.20, 880_000), ("docs-site", 0.18, 0.34, 96_000),
-            ("notes-cli", 0.1, 0.12, 21_000), ("api-gateway", 0.33, 0.9, 150_000), ("infra-tools", 0.25, 0.7, 120_000),
+        // Varied branches, context levels and line counts so every badge state shows: a long branch name, context past
+        // the amber and red thresholds, and lines changed.
+        for (id, ctx, cost, tok, branch, lines) in [
+            ("payments-api", 0.92, 1.87, 412_000, "claude/fix-flaky-retry-backoff-d6dea5", (128, 34)),
+            ("web-dashboard", 0.71, 3.20, 880_000, "claude/fix-flaky-chart-tooltip-d6dea5", (128, 34)),
+            ("docs-site", 0.18, 0.34, 96_000, "docs/migrating-to-v2", (212, 9)),
+            ("notes-cli", 0.1, 0.12, 21_000, "main", (0, 0)),
+            ("api-gateway", 0.33, 0.9, 150_000, "feature/audit-log", (0, 0)),
+            ("infra-tools", 0.71, 0.7, 120_000, "main", (212, 9)),
+            ("mobile-app", 0.92, 2.4, 640_000, "claude/pull-to-refresh", (45, 12)),
+            ("data-pipeline", 0.55, 1.1, 300_000, "main", (0, 0)),
         ] {
-            store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok)
+            store.setDemoUsage(id, ctxFraction: ctx, cost: cost, tokens: tok, branch: branch, lines: lines)
         }
         // Subscription plan with live quota windows, as a Max user would see.
         billing = .subscription(plan: "Max 5x"); statusLineInstalled = true
