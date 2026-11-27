@@ -180,7 +180,6 @@ struct AgentWave: View {
             }
             .frame(height: height)
             .animation(.easeInOut(duration: 0.9), value: pulse)
-            .contentTransition(.identity)
         }
     }
 }
@@ -764,5 +763,8 @@ struct IslandCompactLeading: View {
 
 struct IslandCompactTrailing: View {
     let state: NotchActivityState
-    var body: some View { AgentWave(state: state, height: 15) }
+    var body: some View {
+        // An explicit size: the compact region otherwise has nothing to measure when the system snapshots it.
+        AgentWave(state: state, height: 15).frame(width: 30, height: 15)
+    }
 }

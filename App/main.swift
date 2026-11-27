@@ -46,8 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         statusItem = item
 
-        // A window makes the app frontmost, which starting the activity requires. Once the island is up, tuck away.
-        detailWindow.show(model: model)
+        // Starting the activity needs the app frontmost; activating as a regular app is enough, no window. The
+        // sessions window only opens as a fallback when the island can't start.
         Task { @MainActor in
             await model.island.resetExisting()
             for _ in 0..<30 {
@@ -56,8 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if model.island.isLive { break }
             }
             if model.island.isLive, !CommandLine.arguments.contains("--regular") {
-                detailWindow.hide()
                 NSApp.setActivationPolicy(.accessory)
+            } else if !model.island.isLive {
+                detailWindow.show(model: model)
             }
         }
     }
