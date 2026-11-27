@@ -47,7 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         statusItem = item
 
-        // The app is frontmost (regular + activated), which starting the activity requires. Once the island is up, tuck away.
+        // Starting the activity needs the app frontmost; activating as a regular app is enough, no window. Once the
+        // island is up (or has had its chance), tuck away; "Show Island" in the menu retries.
         Task { @MainActor in
             await model.island.resetExisting()
             for _ in 0..<30 {
