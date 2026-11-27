@@ -502,7 +502,7 @@ struct PromptPanel: View {
 
     /// The only place an approval is answered. Positive is green, negative is red, as users expect: red-tinted Deny on the left, Allow on
     /// the right (filled green). A destructive request keeps those colours (the red "Destructive" pill carries the
-    /// danger) but makes Allow a two-step: a green-tinted "Allow", then a filled green "Confirm" for a few seconds. "Allow for session" is never offered for it.
+    /// danger) but makes Allow a two-step: "Allow", then "Confirm" for a few seconds. "Allow for session" is never offered for it.
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             if !p.canAnswer {
@@ -544,13 +544,8 @@ struct PromptPanel: View {
                 }
                 .accessibilityLabel("Deny \(Island.target(p.tool, p.text))")
                 Button(intent: AllowIntent(sessionId: p.sessionId, requestId: p.requestId)) {
-                    if p.confirming {
-                        Pill(title: "Confirm", tint: Island.allow, filled: true, height: 26, stretch: false)
-                    } else if p.destructive {
-                        Pill(title: "Allow", tint: Island.allow, wash: true, height: 26, stretch: false)
-                    } else {
-                        Pill(title: "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
-                    }
+                    // Same solid green in every state; only the word changes when a destructive Allow is armed.
+                    Pill(title: p.confirming ? "Confirm" : "Allow", tint: Island.allow, filled: true, height: 26, stretch: false)
                 }
                 .accessibilityLabel(
                     p.confirming
@@ -877,15 +872,16 @@ struct Footer: View {
             row(bar: 28, size: 11, icon: true)
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
-            row(bar: 16, size: 10, icon: false, dots: state.offPageNeed == 0)
-            // Tightest: a page label, a "+N need you" hint and 24pt targets leave no room for reset times.
-            row(bar: 16, size: 10, icon: false, dots: false, resets: false)
+            row(bar: 16, size: 10, icon: false)
+            // Tightest: the dots always win. Reset times go first, then the "+N need you" hint.
+            row(bar: 16, size: 10, icon: false, resets: false)
+            row(bar: 16, size: 10, icon: false, resets: false, hint: false)
         }
         .padding(.horizontal, 4)
     }
 
     private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true, resets: Bool = true
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, resets: Bool = true, hint: Bool = true
     )
         -> some View
     {
@@ -893,7 +889,7 @@ struct Footer: View {
             limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh
             Spacer(minLength: 0)
-            pager(dots: dots)
+            pager(hint: hint)
         }
     }
 
@@ -915,8 +911,8 @@ struct Footer: View {
         .accessibilityLabel("Refresh plan limits")
     }
 
-    @ViewBuilder private func pager(dots: Bool) -> some View {
-        if state.pages > 1 { Pager(state: state, dots: dots).fixedSize() }
+    @ViewBuilder private func pager(hint: Bool) -> some View {
+        if state.pages > 1 { Pager(state: state, hint: hint).fixedSize() }
     }
 
     @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
@@ -1014,21 +1010,21 @@ extension Island {
 /// (wrapping around); the app also turns pages by itself while nobody is tapping.
 struct Pager: View {
     let state: NotchActivityState
-    /// False in the tightest footer: the dots give way to the label and the "+N need you" hint.
-    var dots = true
+    /// False in the tightest footer, where the dots take the room the "+N need you" hint would use.
+    var hint = true
+    /// At most this many dots are drawn; past it they are a window that follows the current page.
+    private static let maxDots = 8
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 5) {
-            if state.offPageNeed > 0 {
+            if hint, state.offPageNeed > 0 {
                 Text("+\(state.offPageNeed) need you").sfont(size: 11, weight: .semibold).foregroundStyle(Island.waiting)
                     .lineLimit(1).fixedSize().padding(.trailing, 3)
             }
-            Text("\(state.page + 1)/\(state.pages)").sfont(size: 11, weight: .medium).monospacedDigit()
-                .foregroundStyle(Island.secondary).lineLimit(1).fixedSize()
             Button(intent: PageIntent(forward: false)) { arrow("chevron.left") }
                 .accessibilityLabel("Previous page")
             HStack(spacing: 4) {
-                ForEach(0..<(dots ? min(state.pages, 8) : 0), id: \.self) { i in
+                ForEach(dotWindow, id: \.self) { i in
                     Capsule().fill(Color.white.opacity(i == state.page ? 0.9 : 0.25))
                         .frame(width: (i == state.page ? 12 : 5) * k, height: 5 * k)
                 }
@@ -1041,6 +1037,13 @@ struct Pager: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+    }
+
+    /// The pages that get a dot: all of them up to the cap, else a window of the cap that keeps the current page in view.
+    private var dotWindow: Range<Int> {
+        let n = min(state.pages, Self.maxDots)
+        let start = max(0, min(state.page - n / 2, state.pages - n))
+        return start..<(start + n)
     }
 
     private func arrow(_ symbol: String) -> some View {
