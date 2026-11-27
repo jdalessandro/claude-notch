@@ -1,24 +1,24 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
-/// Drives the real `claude-notch-hook` executable the way Claude Code does.
+/// Drives the real `notchbot-hook` executable the way Claude Code does.
 @Suite struct HookBinary {
     static var hookURL: URL {
-        // .build/<config>/ClaudeNotchCorePackageTests.xctest/... -> sibling of the products dir
+        // .build/<config>/NotchbotCorePackageTests.xctest/... -> sibling of the products dir
         var u = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         while u.pathComponents.count > 1 {
-            let c = u.deletingLastPathComponent().appendingPathComponent("claude-notch-hook")
+            let c = u.deletingLastPathComponent().appendingPathComponent("notchbot-hook")
             if FileManager.default.isExecutableFile(atPath: c.path) { return c }
             u = u.deletingLastPathComponent()
         }
-        return URL(fileURLWithPath: ".build/debug/claude-notch-hook")
+        return URL(fileURLWithPath: ".build/debug/notchbot-hook")
     }
 
     func run(stdin: String, args: [String] = [], socket: String) throws -> (out: String, code: Int32) {
         let p = Process(); p.executableURL = Self.hookURL; p.arguments = args
-        p.environment = ["CLAUDE_NOTCH_SOCKET": socket, "TERM_PROGRAM": "iTerm.app"]
+        p.environment = ["NOTCHBOT_SOCKET": socket, "TERM_PROGRAM": "iTerm.app"]
         let i = Pipe(), o = Pipe(); p.standardInput = i; p.standardOutput = o; p.standardError = Pipe()
         try p.run()
         i.fileHandleForWriting.write(Data(stdin.utf8)); try i.fileHandleForWriting.close()
@@ -27,7 +27,7 @@ import Testing
     }
 
     @Test func interactivePermissionAllowAndDeny() throws {
-        try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path), "build claude-notch-hook first")
+        try #require(FileManager.default.isExecutableFile(atPath: Self.hookURL.path), "build notchbot-hook first")
         let path = "/tmp/cn-hook-\(getpid()).sock"
         let seen = Box<[HookEnvelope]>([])
         let decision = Box<PermissionDecision>(.allow)

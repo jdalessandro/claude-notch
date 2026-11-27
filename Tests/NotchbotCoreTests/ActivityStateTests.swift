@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 @Suite struct ActivityStateTests {
     func store(_ build: (inout SessionStore) -> Void) -> SessionStore {

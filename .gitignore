@@ -4,7 +4,7 @@
 .build/
 .swiftpm/
 .xcode-team
-ClaudeNotch.xcodeproj/
+Notchbot.xcodeproj/
 build/
 dist/
 xcuserdata/

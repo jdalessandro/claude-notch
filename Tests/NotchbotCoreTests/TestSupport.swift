@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 func ev(
     _ name: String, sid: String = "s1", t: TimeInterval = 0, expectsReply: Bool = false,

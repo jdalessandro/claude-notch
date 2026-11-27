@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeNotchCore
+import NotchbotCore
 import SwiftUI
 
 /// Renders the island views offscreen with demo data (`--snapshot <dir>`). The system draws the real island's shape

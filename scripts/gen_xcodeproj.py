@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Generates ClaudeNotch.xcodeproj (no third-party tools). Run from anywhere; writes next to Package.swift.
+"""Generates Notchbot.xcodeproj (no third-party tools). Run from anywhere; writes next to Package.swift.
 
-Targets: ClaudeNotchCore (static lib, the same sources SwiftPM tests), claude-notch-hook (tool),
-ClaudeNotch (app, embeds the widget extension and the hook), ClaudeNotchWidget (Live Activity UI).
-The signing team comes from $CLAUDE_NOTCH_TEAM or .xcode-team (not committed), so no personal ID lives in the repo.
+Targets: NotchbotCore (static lib, the same sources SwiftPM tests), notchbot-hook (tool),
+Notchbot (app, embeds the widget extension and the hook), NotchbotWidget (Live Activity UI).
+The signing team comes from $NOTCHBOT_TEAM or .xcode-team (not committed), so no personal ID lives in the repo.
 """
 import glob, os
 from itertools import count
@@ -11,7 +11,7 @@ from itertools import count
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(root)
 version = open("VERSION").read().strip()
-team = os.environ.get("CLAUDE_NOTCH_TEAM") or (open(".xcode-team").read().strip() if os.path.exists(".xcode-team") else "")
+team = os.environ.get("NOTCHBOT_TEAM") or (open(".xcode-team").read().strip() if os.path.exists(".xcode-team") else "")
 
 _n = count(1)
 def uid(): return "%024X" % (0xB20000000000000000000000 + next(_n))
@@ -22,8 +22,8 @@ def swift_files(*patterns):
     for p in patterns: out += sorted(glob.glob(p))
     return out
 
-CORE = swift_files("Sources/ClaudeNotchCore/*.swift")
-HOOK = swift_files("Sources/claude-notch-hook/*.swift")
+CORE = swift_files("Sources/NotchbotCore/*.swift")
+HOOK = swift_files("Sources/notchbot-hook/*.swift")
 APP = swift_files("App/*.swift")
 SHARED = swift_files("Shared/*.swift")
 WIDGET = swift_files("Widget/*.swift")
@@ -43,10 +43,10 @@ def target(name, product, ptype, srcs, prodref_type, prodname):
     targets[name] = t
     return t
 
-core = target("ClaudeNotchCore", None, "com.apple.product-type.library.static", CORE, "archive.ar", "libClaudeNotchCore.a")
-hook = target("claude-notch-hook", None, "com.apple.product-type.tool", HOOK, "compiled.mach-o.executable", "claude-notch-hook")
-widget = target("ClaudeNotchWidget", None, "com.apple.product-type.app-extension", WIDGET + SHARED, "wrapper.app-extension", "ClaudeNotchWidget.appex")
-app = target("ClaudeNotch", None, "com.apple.product-type.application", APP + SHARED, "wrapper.application", "ClaudeNotch.app")
+core = target("NotchbotCore", None, "com.apple.product-type.library.static", CORE, "archive.ar", "libNotchbotCore.a")
+hook = target("notchbot-hook", None, "com.apple.product-type.tool", HOOK, "compiled.mach-o.executable", "notchbot-hook")
+widget = target("NotchbotWidget", None, "com.apple.product-type.app-extension", WIDGET + SHARED, "wrapper.app-extension", "NotchbotWidget.appex")
+app = target("Notchbot", None, "com.apple.product-type.application", APP + SHARED, "wrapper.application", "Notchbot.app")
 
 PROJ, G_ROOT, G_PROD, CL_PROJ, PD, PR = uid(), uid(), uid(), uid(), uid(), uid()
 
@@ -81,12 +81,12 @@ common = {"SDKROOT": "macosx", "MACOSX_DEPLOYMENT_TARGET": "27.3", "SWIFT_VERSIO
           "CODE_SIGN_STYLE": "Automatic", "CODE_SIGN_IDENTITY": q("Apple Development"), "ENABLE_HARDENED_RUNTIME": "NO"}
 if team: common["DEVELOPMENT_TEAM"] = team
 tset = {
- "ClaudeNotchCore": {"PRODUCT_NAME": "ClaudeNotchCore", "DEFINES_MODULE": "YES", "SKIP_INSTALL": "YES", "CODE_SIGNING_ALLOWED": "NO"},
- "claude-notch-hook": {"PRODUCT_NAME": q("claude-notch-hook"), "SKIP_INSTALL": "YES", "CODE_SIGN_IDENTITY": q("-"), "CODE_SIGN_STYLE": "Manual", "DEVELOPMENT_TEAM": q("")},
- "ClaudeNotchWidget": {"PRODUCT_NAME": "ClaudeNotchWidget", "PRODUCT_BUNDLE_IDENTIFIER": "dev.claudenotch.app.widget", "INFOPLIST_FILE": "Widget/Info.plist",
+ "NotchbotCore": {"PRODUCT_NAME": "NotchbotCore", "DEFINES_MODULE": "YES", "SKIP_INSTALL": "YES", "CODE_SIGNING_ALLOWED": "NO"},
+ "notchbot-hook": {"PRODUCT_NAME": q("notchbot-hook"), "SKIP_INSTALL": "YES", "CODE_SIGN_IDENTITY": q("-"), "CODE_SIGN_STYLE": "Manual", "DEVELOPMENT_TEAM": q("")},
+ "NotchbotWidget": {"PRODUCT_NAME": "NotchbotWidget", "PRODUCT_BUNDLE_IDENTIFIER": "dev.notchbot.app.widget", "INFOPLIST_FILE": "Widget/Info.plist",
    "CODE_SIGN_ENTITLEMENTS": "Widget/Widget.entitlements", "SKIP_INSTALL": "YES", "SWIFT_VERSION": "5.0",
    "LD_RUNPATH_SEARCH_PATHS": q("$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks")},
- "ClaudeNotch": {"SWIFT_VERSION": "5.0", "PRODUCT_NAME": "ClaudeNotch", "PRODUCT_BUNDLE_IDENTIFIER": "dev.claudenotch.app", "INFOPLIST_FILE": "App/Info.plist",
+ "Notchbot": {"SWIFT_VERSION": "5.0", "PRODUCT_NAME": "Notchbot", "PRODUCT_BUNDLE_IDENTIFIER": "dev.notchbot.app", "INFOPLIST_FILE": "App/Info.plist",
    "CODE_SIGN_ENTITLEMENTS": "App/App.entitlements", "LD_RUNPATH_SEARCH_PATHS": q("$(inherited) @executable_path/../Frameworks")},
 }
 
@@ -136,6 +136,6 @@ for t in targets.values():
     cl += "\t\t%s = {isa = XCConfigurationList; buildConfigurations = (%s, %s, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };\n" % (t["cl"], t["dbg"], t["rel"])
 sect("XCConfigurationList", cl)
 o.append("\t};\n\trootObject = %s;\n}\n" % PROJ)
-os.makedirs("ClaudeNotch.xcodeproj", exist_ok=True)
-open("ClaudeNotch.xcodeproj/project.pbxproj", "w").write("".join(o))
-print("wrote ClaudeNotch.xcodeproj" + ("" if team else "  (no team: set CLAUDE_NOTCH_TEAM or .xcode-team)"))
+os.makedirs("Notchbot.xcodeproj", exist_ok=True)
+open("Notchbot.xcodeproj/project.pbxproj", "w").write("".join(o))
+print("wrote Notchbot.xcodeproj" + ("" if team else "  (no team: set NOTCHBOT_TEAM or .xcode-team)"))

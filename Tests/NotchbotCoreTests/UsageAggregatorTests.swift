@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import ClaudeNotchCore
+@testable import NotchbotCore
 
 @Suite struct UsageAggregatorTests {
     let now = ISO8601DateFormatter().date(from: "2026-11-25T18:00:00Z")!
