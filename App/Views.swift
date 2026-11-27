@@ -240,8 +240,11 @@ struct QuotaRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(window.title).font(.system(size: 13, weight: .medium))
                 Spacer()
-                Text("\(Int(window.usedPercent.rounded()))%" + (window.resetsAt.map { " · Resets \(Fmt.until($0, fiveHour: window.id == "five_hour"))" } ?? ""))
-                    .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
+                Text(
+                    "\(Int(window.usedPercent.rounded()))%"
+                        + (window.resetsAt.map { " · Resets \(Fmt.until($0, fiveHour: window.id == "five_hour"))" } ?? "")
+                )
+                .font(.system(size: 12)).foregroundStyle(.secondary).monospacedDigit()
             }
             GeometryReader { g in
                 ZStack(alignment: .leading) {

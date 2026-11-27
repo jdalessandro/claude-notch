@@ -43,7 +43,7 @@ enum IslandSnapshots {
             Spacer()
             IslandCompactTrailing(state: st)
         }
-        .padding(.horizontal, 12).frame(width: 300, height: 38)
+        .padding(.horizontal, 12).frame(width: 210, height: 38)
         .background(Capsule().fill(.black))
         .padding(24).background(Color(white: 0.35))
         .environment(\.colorScheme, .dark)
