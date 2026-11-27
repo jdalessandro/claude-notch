@@ -84,7 +84,36 @@ public struct PendingPermission: Sendable, Equatable, Identifiable {
     public var since: Date
     /// Set when this "permission" is really Claude asking the user a question.
     public var question: AskedQuestion?
+    /// Claude Code's suggested allow rule for this request, re-targeted to `destination: "session"`, and its short
+    /// label ("npm install"). Nil when Claude Code suggested none or the rule is too broad to offer.
+    public var sessionRule: JSONValue?
+    public var sessionScope: String?
     public var isQuestion: Bool { question != nil || toolName == AskedQuestion.toolName }
+
+    /// Picks the first `addRules`/`allow` suggestion that targets this tool and re-targets it to this session only.
+    /// A Bash rule must carry a command pattern (never "all of Bash"); anything oversized is not offered.
+    public static func sessionRule(from suggestions: JSONValue?, tool: String?) -> (rule: JSONValue, label: String)? {
+        guard let tool, case .array(let entries)? = suggestions else { return nil }
+        for e in entries {
+            guard e["type"]?.stringValue == "addRules", e["behavior"]?.stringValue == "allow",
+                case .array(let rules)? = e["rules"], !rules.isEmpty, rules.count <= 4
+            else { continue }
+            let ok = rules.allSatisfy { r in
+                guard r["toolName"]?.stringValue == tool else { return false }
+                let c = r["ruleContent"]?.stringValue
+                if let c, c.isEmpty || c.count > 500 { return false }
+                return tool != "Bash" || c != nil
+            }
+            guard ok, let first = rules.first else { continue }
+            let label = first["ruleContent"]?.stringValue ?? tool
+            return (
+                .object([
+                    "type": .string("addRules"), "rules": .array(rules), "behavior": .string("allow"), "destination": .string("session"),
+                ]), label
+            )
+        }
+        return nil
+    }
 
     /// Whether `event` means this request has been settled elsewhere (answered in the terminal, tool ran,
     /// turn ended). Deliberately narrow: unrelated events such as the `Notification` that Claude Code fires
@@ -320,11 +349,13 @@ public struct SessionStore: Sendable {
             let alreadyAnnounced = s.status == .needsPermission && (s.pending == nil || s.pending?.toolUseId == p.toolUseId)
             s.status = .needsPermission; s.unseen = true
             let asked = p.toolName == AskedQuestion.toolName ? AskedQuestion.parse(p.toolInput) : nil
+            let suggested = asked == nil ? PendingPermission.sessionRule(from: p.permissionSuggestions, tool: p.toolName) : nil
             s.pending = PendingPermission(
                 id: UUID(), toolName: p.toolName ?? "tool",
                 summary: asked?.text ?? Self.summarize(tool: p.toolName, input: p.toolInput) ?? (p.toolName ?? "tool"),
                 message: p.message, agentType: p.agentId == nil ? nil : p.agentType, agentId: p.agentId,
-                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now, question: asked)
+                toolUseId: p.toolUseId, canAnswer: env.expectsReply, since: now, question: asked,
+                sessionRule: suggested?.rule, sessionScope: suggested?.label)
             s.attentionMessage = p.message
             if !alreadyAnnounced { effect = .notify(sessionId: sid, kind: .permission) }
 

@@ -236,6 +236,17 @@ final class AppModel {
         reconcile()
     }
 
+    /// "Allow for session": allows and hands Claude Code the suggested rule with `destination: "session"`.
+    func answerAllowForSession(_ sessionId: String) {
+        guard let rule = store.sessions[sessionId]?.pending?.sessionRule else { return answer(sessionId, .allow) }
+        if broker.answerAllowForSession(sessionId, rule: rule) {
+            store.resolvePermission(sessionId, allowed: true)
+        } else {
+            store.detachPending(sessionId)
+        }
+        reconcile()
+    }
+
     func open(_ s: AgentSession) {
         store.markSeen(s.id)
         // Prefer the exact conversation in Claude Desktop (this also activates the app).
@@ -376,7 +387,8 @@ final class AppModel {
         switch action {
         case .allow where s.isAnswerable(requestId: requestId): answer(sessionId, .allow)
         case .deny where s.isAnswerable(requestId: requestId): answer(sessionId, .deny)
-        case .allow, .deny: break
+        case .allowSession where s.isAnswerable(requestId: requestId) && prefs.approveFromIsland: answerAllowForSession(sessionId)
+        case .allow, .allowSession, .deny: break
         case .open:
             if s.isAnswerable(requestId: requestId), s.pending?.isQuestion == true { answerQuestion(s) } else { open(s) }
         case .nextPage, .previousPage, .refreshQuota, .openSettings: break

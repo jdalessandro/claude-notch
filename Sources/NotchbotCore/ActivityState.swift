@@ -78,6 +78,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         public var subagent: String?
         /// False when no hook is waiting for our answer: only "Open" is offered.
         public var canAnswer: Bool
+        /// What "Allow for session" would cover ("npm install"); nil when the option isn't offered.
+        public var sessionScope: String?
     }
 
     public enum Phase: String, Codable, Sendable { case idle, working, needsYou, done }
@@ -167,7 +169,8 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             text: clip(text, 200), isQuestion: p.isQuestion, header: q?.header.map { clip($0, 20) },
             options: opts.prefix(maxOptions).map { clip($0, 22) }, moreOptions: max(0, opts.count - maxOptions),
             multiSelect: q?.multiSelect ?? false, moreQuestions: max(0, (q?.total ?? 1) - 1),
-            subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer)
+            subagent: p.agentType.map { clip($0, 20) }, canAnswer: p.canAnswer,
+            sessionScope: p.canAnswer && p.sessionRule != nil ? p.sessionScope.map { clip($0, 28) } : nil)
     }
 
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
