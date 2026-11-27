@@ -136,6 +136,10 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
 
     /// True when neither plan window is known.
     public var limitsUnknown: Bool { fiveHour == nil && weekly == nil }
+    /// The subagent tree being shown in place of the session rows, when the user tapped a session's subagent pill.
+    public var focus: Focus?
+    /// Whether the subagent pill opens the tree (the "Subagents" display setting; the widget can't read it).
+    public var subagentTree = true
 
     /// Whether the waveform has bars to move.
     public var isAnimated: Bool { working + subagentsRunning > 0 || phase == .needsYou }
@@ -203,17 +207,19 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
     /// Builds the activity state from the live sessions (already ordered most-urgent first by `SessionStore.active`).
     public static func make(
         sessions: [AgentSession], quota: QuotaState?, maxRows: Int = NotchActivityState.maxRows, page: Int = 0,
-        featuredRequestId: String? = nil, limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
+        featuredRequestId: String? = nil, focus: String? = nil, limitsNote: LimitsNote? = nil, hooksInstalled: Bool = true
     ) -> NotchActivityState {
         var st = build(
-            sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: featuredRequestId)
+            sessions: sessions, quota: quota, maxRows: maxRows, page: page, featuredRequestId: featuredRequestId,
+            focus: focus)
         st.limitsNote = limitsNote
         st.hooksMissing = !hooksInstalled
         return st
     }
 
     private static func build(
-        sessions: [AgentSession], quota: QuotaState?, maxRows: Int, page: Int, featuredRequestId: String?
+        sessions: [AgentSession], quota: QuotaState?, maxRows: Int, page: Int, featuredRequestId: String?,
+        focus: String?
     ) -> NotchActivityState {
         let active = sessions.filter { $0.status != .ended }
         guard !active.isEmpty else {
@@ -250,6 +256,11 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
         // Sessions that need an answer (not just a review) and sit on another page than the one shown.
         let shown = Set(rows.map(\.id))
         let offPage = rest.filter { $0.status.needsAttention && !shown.contains($0.id) }.count
+        // A focused session's subagent tree replaces the session rows. A session that is gone or has no subagents
+        // falls back to the list (the app then drops the focus).
+        let focused = focus.flatMap { id in active.first { $0.id == id && !$0.subagents.isEmpty } }.map {
+            Self.focus(on: $0, maxLines: prompt == nil ? maxTreeLines : maxTreeLinesWithPrompt)
+        }
         let phase: Phase = !needs.isEmpty ? .needsYou : (!working.isEmpty ? .working : .done)
         let headline: String =
             switch phase {
@@ -259,10 +270,10 @@ public struct NotchActivityState: Codable, Hashable, Sendable {
             }
         return NotchActivityState(
             phase: phase, headline: headline, sessions: active.count, needsYou: needs.count, working: working.count,
-            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: Array(rows),
+            subagentsRunning: active.reduce(0) { $0 + $1.runningSubagents }, prompt: prompt, rows: focused == nil ? Array(rows) : [],
             more: max(0, rest.count - rows.count), fiveHour: quota?.fiveHour?.fraction, weekly: quota?.sevenDay?.fraction,
             pulse: 0, fiveHourReset: quota?.fiveHour?.resetsAt, weeklyReset: quota?.sevenDay?.resetsAt, page: current,
-            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage)
+            pages: pages, reviews: active.filter(\.needsReview).count, offPageNeed: offPage, focus: focused)
     }
 
     /// Encoded size in bytes (what ActivityKit measures).
