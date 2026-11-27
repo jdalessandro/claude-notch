@@ -56,7 +56,7 @@ enum Island {
     ///   coral   `running`  working: the waveform and the working state, in the logo's own colour
     ///   red     `danger`   negative: Deny, failed, destructive, a nearly full limit
     ///   green   `allow`    positive: the Allow / Confirm buttons, nothing else
-    ///   blue    also the healthy plan-limit bars (`quotaOK`); context rings stay coral while healthy
+    ///   blue    also the healthy plan-limit bars (`quotaOK`); context rings are coral while healthy
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
@@ -356,12 +356,15 @@ struct ElapsedTimer: View {
 struct Badge<Label: View>: View {
     var tint: Color? = nil
     var icon: String? = nil
+    /// A status dot before the label, in the status colour; the text itself stays neutral (or `tint`).
+    var dot: Color? = nil
     /// A flexible badge truncates its text to the space it is given instead of claiming its full width.
     var flexible = false
     @ViewBuilder var label: Label
     @Environment(\.islandScale) private var k
     var body: some View {
         HStack(spacing: 3 * k) {
+            if let dot { Circle().fill(dot).frame(width: 6 * k, height: 6 * k) }
             if let icon { Image(systemName: icon).sfont(size: 9, weight: .bold) }
             label
         }
@@ -374,8 +377,8 @@ struct Badge<Label: View>: View {
 }
 
 extension Badge where Label == Text {
-    init(_ text: String, tint: Color? = nil, icon: String? = nil, flexible: Bool = false) {
-        self.init(tint: tint, icon: icon, flexible: flexible) { Text(text) }
+    init(_ text: String, tint: Color? = nil, icon: String? = nil, dot: Color? = nil, flexible: Bool = false) {
+        self.init(tint: tint, icon: icon, dot: dot, flexible: flexible) { Text(text) }
     }
 }
 
@@ -643,13 +646,13 @@ struct SessionRow: View {
 
     @ViewBuilder private var status: some View {
         if row.kind == .working, let since = row.since {
-            Badge {
+            Badge(tint: Island.running, dot: Island.running) {
                 ElapsedTimer(since: since)
             }
         } else if row.kind == .approval, row.destructive {
             Badge("Destructive", tint: Island.danger, icon: "exclamationmark.triangle.fill")
         } else {
-            Badge(row.status, tint: row.kind == .idle || row.kind == .working ? nil : row.kind.tint)
+            Badge(row.status, dot: row.kind.tint)
         }
     }
 
@@ -704,11 +707,10 @@ struct SessionRow: View {
                         Text("+\(row.linesAdded)") + Text(" −\(row.linesRemoved)").foregroundStyle(Island.secondary)
                     }
                 }
-                // Neutral until the window is filling up (orange > 65 %, red > 85 %).
+                // Coral while healthy, orange > 65 %, red > 85 %.
                 if let ctx = row.context {
-                    let full = ctx > 0.65
-                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: full ? Island.context(ctx) : nil, showLabel: labels) {
-                        Ring(fraction: ctx, tint: full ? Island.context(ctx) : Color.white.opacity(0.8))
+                    Stat(value: "\(Int(ctx * 100))%", label: "context", tint: Island.context(ctx), showLabel: labels) {
+                        Ring(fraction: ctx, tint: Island.context(ctx))
                     }
                 }
             }

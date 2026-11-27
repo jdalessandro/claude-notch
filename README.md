@@ -34,10 +34,10 @@ brew install --cask jdalessandro/notchbot/notchbot
 curl -fsSL https://raw.githubusercontent.com/jdalessandro/notchbot/main/scripts/install.sh | bash
 ```
 
-**DMG:** download `Notchbot-<version>.dmg` from [Releases](https://github.com/jdalessandro/notchbot/releases), open it
-and drag **NotchBot** to Applications.
+**DMG:** download `Notchbot-<version>.dmg` (currently `Notchbot-0.1.0.dmg`) from
+[Releases](https://github.com/jdalessandro/notchbot/releases/latest), open it and drag **NotchBot** to Applications.
 
-> No release is published yet. Until then, [build from source](CONTRIBUTING.md#build-the-app).
+Prefer to build it yourself? See [build from source](CONTRIBUTING.md#build-the-app).
 
 ### First run
 
