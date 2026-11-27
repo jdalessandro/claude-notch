@@ -35,6 +35,8 @@ extension View {
 enum Island {
     /// Extra inset on every outer edge of the expanded island, on top of the system's own margin.
     static let inset: CGFloat = 17
+    /// Least height of the idle island's body, so the system keeps its rounded-rectangle shape instead of a pill.
+    static let idleMinHeight: CGFloat = 64
     static let coral = Color(red: 0.851, green: 0.467, blue: 0.341)  // #D97757
     /// The robot's three tones. Change these to recolour the logo.
     static let robotBase = coral
