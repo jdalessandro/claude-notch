@@ -17,7 +17,7 @@ NotchBot draws a macOS Live Activity beside the camera cutout. The system owns i
 there is no hover or scrolling inside it; you interact with buttons.
 
 **Compact view.** Logo on the left, waveform on the right: one bar per working session, thinner bars for subagents.
-Grey = agents are working, orange = something needs you, dots = idle. An optional blue badge on the logo counts results
+Coral = agents are working, orange = something needs you, dots = idle. An optional blue badge on the logo counts results
 you haven't reviewed. Green is Allow, red is Deny, failed or destructive.
 
 **Expanded view.** It opens by itself when something needs you. From top to bottom:
@@ -107,7 +107,7 @@ the refresh button; the last numbers are saved and survive restarts, and a faile
 reset time has passed shows 0% rather than a frozen number. Nothing is requested on API (pay-as-you-go) billing, which
 has no plan limits.
 
-Bars are grey, orange from 75% and red from 90% (with a "!" at red). The **Limits | Tokens** toggle switches to token totals for the last
+Bars are blue, orange from 75% and red from 90% (with a "!" at red). The **Limits | Tokens** toggle switches to token totals for the last
 5 hours, today and 7 days (input + output + cache writes; cache reads are excluded because they barely use quota).
 
 > **Privacy.** This is the only network request NotchBot makes. The token is sent only to Anthropic and never logged.
