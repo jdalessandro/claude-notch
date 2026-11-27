@@ -537,32 +537,31 @@ struct PromptPanel: View {
 /// One session in three lines: its name; then branch and status; then what it is doing, with its actions or stats beside it.
 struct SessionRow: View {
     let row: NotchActivityState.Row
+    /// Whether the subagent pill opens the subagent tree.
+    var tree = false
     @Environment(\.islandScale) private var k
     var body: some View {
         // Live Activities don't deliver taps to a button hidden behind other content, so the tappable regions are the
         // visible header and detail text themselves; the actions on the right keep their own buttons.
         VStack(alignment: .leading, spacing: 5) {
-            Button(intent: OpenSessionIntent(sessionId: row.id)) {
-                VStack(alignment: .leading, spacing: 5) {
-                    if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    // As much of the stats as fits beside the branch: full, then without labels, then without the lines.
-                    ViewThatFits(in: .horizontal) {
-                        badgeLine(labels: true, lines: true)
-                        badgeLine(labels: false, lines: true)
-                        badgeLine(labels: false, lines: false)
-                    }
+            if !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(intent: OpenSessionIntent(sessionId: row.id)) {
+                    Text(row.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel(row.spokenSummary)
+                .accessibilityHint("Opens the session")
             }
-            .buttonStyle(.plain)
-            // One element for the whole header, read in order: name, status, branch, stats, detail. It opens the same
-            // session as the detail line below, which is hidden from VoiceOver so nothing is read twice.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(row.spokenSummary)
-            .accessibilityHint("Opens the session")
+            // As much of the stats as fits beside the branch: full, then without labels, then without the lines.
+            ViewThatFits(in: .horizontal) {
+                badgeLine(labels: true, lines: true)
+                badgeLine(labels: false, lines: true)
+                badgeLine(labels: false, lines: false)
+            }
+            // VoiceOver: the name carries the whole header (name, status, branch, stats, detail) and opens the session;
+            // the badges are hidden so nothing is read twice, except when the subagent pill is its own button.
+            .accessibilityHidden(!(tree && row.subagentTotal > 0) && !row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             HStack(spacing: 5) {
                 Button(intent: OpenSessionIntent(sessionId: row.id)) {
                     Text(row.detail)
@@ -652,13 +651,12 @@ struct SessionRow: View {
         HStack(spacing: 5) {
             if row.kind == .working || row.kind == .idle {
                 if row.subagentTotal > 0 {
-                    let running = row.subagents > 0
-                    Stat(
-                        value: "\(running ? row.subagents : row.subagentTotal)",
-                        label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
-                        tint: running ? Island.coral : nil, showLabel: labels
-                    ) {
-                        Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+                    if tree {
+                        Button(intent: FocusSubagentsIntent(sessionId: row.id)) { subagentPill(labels: labels) }
+                            .accessibilityLabel("\(row.subagents > 0 ? "\(row.subagents) running" : "\(row.subagentTotal) done") subagents")
+                            .accessibilityHint("Shows what each subagent is doing")
+                    } else {
+                        subagentPill(labels: labels)
                     }
                 }
                 if lines, row.linesAdded + row.linesRemoved > 0 {
@@ -678,6 +676,17 @@ struct SessionRow: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+    }
+
+    private func subagentPill(labels: Bool) -> some View {
+        let running = row.subagents > 0
+        return Stat(
+            value: "\(running ? row.subagents : row.subagentTotal)",
+            label: running ? (row.subagents == 1 ? "subagent" : "subagents") : "done",
+            tint: running ? Island.coral : nil, showLabel: labels
+        ) {
+            Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+        }
     }
 
     private var openButton: some View {
@@ -724,6 +733,113 @@ extension NotchActivityState.Row {
     }
 }
 
+// MARK: - Subagent tree
+
+/// One session's subagents, in place of the session list: the main agent, then each subagent on a line with its type,
+/// state, current tool and elapsed time. A subagent waiting on you is amber. Fixed line count (the island clips).
+struct SubagentTree: View {
+    let focus: NotchActivityState.Focus
+    @Environment(\.islandScale) private var k
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Button(intent: FocusSubagentsIntent(sessionId: "")) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.left").sfont(size: 9, weight: .bold)
+                        Text("Back").sfont(size: 11, weight: .semibold)
+                    }
+                    .foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 8 * k).padding(.vertical, 3 * k)
+                    .background(Capsule().fill(Color.white.opacity(0.14))).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Back to sessions")
+                Text(focus.name).sfont(size: 14, weight: .semibold).foregroundStyle(.white).lineLimit(1)
+                Spacer(minLength: 4)
+                Button(intent: FocusSubagentsIntent(sessionId: "")) {
+                    Stat(
+                        value: "\(focus.running > 0 ? focus.running : focus.total)",
+                        label: focus.running > 0 ? (focus.running == 1 ? "subagent" : "subagents") : "done",
+                        tint: focus.running > 0 ? Island.coral : nil, showLabel: true
+                    ) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted").sfont(size: 9, weight: .bold)
+                    }
+                }
+                .buttonStyle(.plain).accessibilityLabel("Hide subagents")
+            }
+            ForEach(focus.lines) { line in
+                TreeLineView(line: line, last: line.id == focus.lines.last?.id && focus.more == 0)
+            }
+            if focus.more > 0 {
+                HStack(spacing: 6) {
+                    Text("└").sfont(size: 12, design: .monospaced).foregroundStyle(Island.tertiary).frame(width: 12 * k)
+                    Text("+\(focus.more) more").sfont(size: 11.5, weight: .medium).foregroundStyle(Island.secondary)
+                }
+                .accessibilityLabel("\(focus.more) more subagents")
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous).fill(Island.surface))
+        .overlay {
+            if focus.lines.contains(where: { $0.state == .waiting }) {
+                RoundedRectangle(cornerRadius: Island.panelRadius, style: .continuous)
+                    .strokeBorder(Island.amber.opacity(0.45), lineWidth: 1)
+            }
+        }
+    }
+}
+
+struct TreeLineView: View {
+    let line: NotchActivityState.TreeLine
+    let last: Bool
+    @Environment(\.islandScale) private var k
+
+    private var tint: Color {
+        switch line.state {
+        case .running: Island.coral
+        case .waiting: Island.amber
+        case .done: Island.green
+        case .failed: Island.red
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Connector: the main agent is the root (no glyph); subagents hang off it (├ siblings, └ the last).
+            Text(line.id == 0 ? "" : last ? "└" : "├").sfont(size: 12, design: .monospaced)
+                .foregroundStyle(Island.tertiary).frame(width: 12 * k)
+            indicator
+            Text(line.name).sfont(size: 12, weight: .semibold).foregroundStyle(line.state == .waiting ? Island.amber : .white)
+                .lineLimit(1).fixedSize()
+            Text(line.detail).sfont(size: 11.5).foregroundStyle(line.state == .waiting ? Island.amber.opacity(0.9) : Island.secondary)
+                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            elapsed.sfont(size: 11, weight: .medium).monospacedDigit().foregroundStyle(
+                line.state == .waiting ? Island.amber : Island.tertiary
+            )
+            .lineLimit(1).fixedSize()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(line.accessibilityLabel())
+    }
+
+    @ViewBuilder private var indicator: some View {
+        switch line.state {
+        case .running: Circle().fill(tint).frame(width: 6 * k, height: 6 * k)
+        case .waiting: Image(systemName: "lock.fill").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        case .done: Image(systemName: "checkmark").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        case .failed: Image(systemName: "xmark").sfont(size: 7.5, weight: .bold).foregroundStyle(tint)
+        }
+    }
+
+    /// A running line counts up by itself (no pushes); a finished one shows how long it took.
+    @ViewBuilder private var elapsed: some View {
+        if let since = line.since {
+            Text(since, style: .timer).multilineTextAlignment(.trailing)
+        } else if let took = line.took {
+            Text(Fmt.duration(TimeInterval(took)))
+        }
+    }
+}
+
 // MARK: - Footer
 
 /// One line: the two plan limits as short meters with when each resets, and the pager when there is more than one
@@ -743,17 +859,19 @@ struct Footer: View {
             row(bar: 30, size: 11, icon: false)
             row(bar: 22, size: 10.5, icon: false)
             row(bar: 16, size: 10, icon: false, dots: state.offPageNeed == 0)
+            // Tightest: a page label, a "+N need you" hint and 24pt targets leave no room for reset times.
+            row(bar: 16, size: 10, icon: false, dots: false, resets: false)
         }
         .padding(.horizontal, 4)
     }
 
     private func row(
-        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true
+        bar: CGFloat, size: CGFloat, icon: Bool, words: Bool = false, dots: Bool = true, resets: Bool = true
     )
         -> some View
     {
         HStack(spacing: 8) {
-            limits(bar: bar, size: size, icon: icon, words: words)
+            limits(bar: bar, size: size, icon: icon, words: words, resets: resets)
             refresh
             Spacer(minLength: 0)
             pager(dots: dots)
@@ -782,7 +900,7 @@ struct Footer: View {
         if state.pages > 1 { Pager(state: state, dots: dots).fixedSize() }
     }
 
-    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool) -> some View {
+    @ViewBuilder private func limits(bar: CGFloat, size: CGFloat, icon: Bool, words: Bool, resets: Bool) -> some View {
         if state.limitsUnknown {
             // Never vanish silently: say that there is nothing to show (nothing at all for an account without plan windows).
             if let text = Island.unavailableText(state.limitsNote) {
@@ -791,9 +909,11 @@ struct Footer: View {
         } else {
             HStack(spacing: 9) {
                 if let f = state.fiveHour {
-                    limit("5h", f, state.fiveHourReset, bar: bar, size: size, icon: icon, words: words, hm: true)
+                    limit("5h", f, resets ? state.fiveHourReset : nil, bar: bar, size: size, icon: icon, words: words, hm: true)
                 }
-                if let w = state.weekly { limit("7d", w, state.weeklyReset, bar: bar, size: size, icon: icon, words: words) }
+                if let w = state.weekly {
+                    limit("7d", w, resets ? state.weeklyReset : nil, bar: bar, size: size, icon: icon, words: words)
+                }
             }
         }
     }
@@ -984,7 +1104,8 @@ struct IslandBody: View {
         VStack(alignment: .leading, spacing: 10) {
             if stale { StaleNotice() }
             if let p = state.prompt { PromptPanel(p: p) }
-            ForEach(state.rows) { SessionRow(row: $0) }
+            if let f = state.focus { SubagentTree(focus: f) }
+            ForEach(state.rows) { SessionRow(row: $0, tree: state.subagentTree) }
             Footer(state: state).padding(.top, 4)
         }
     }

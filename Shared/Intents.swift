@@ -5,7 +5,9 @@ import Foundation
 /// which registers the handler at launch. In the widget extension the handler stays nil: the buttons are only drawn there.
 @MainActor
 enum IntentBridge {
-    enum Action: Sendable { case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings }
+    enum Action: Sendable {
+        case allow, allowSession, deny, open, review, nextPage, previousPage, refreshQuota, openSettings, focusSubagents
+    }
     static var handler: (@MainActor (Action, _ sessionId: String, _ requestId: String) -> Void)?
 }
 
@@ -82,6 +84,19 @@ struct PageIntent: LiveActivityIntent {
     init(forward: Bool) { self.forward = forward }
     @MainActor func perform() async throws -> some IntentResult {
         IntentBridge.handler?(forward ? .nextPage : .previousPage, "", "")
+        return .result()
+    }
+}
+
+/// Shows (or, tapped again or with an empty session, hides) a session's subagent tree in place of the session list.
+/// The app owns which session is focused.
+struct FocusSubagentsIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Show subagents"
+    @Parameter(title: "Session") var sessionId: String
+    init() {}
+    init(sessionId: String) { self.sessionId = sessionId }
+    @MainActor func perform() async throws -> some IntentResult {
+        IntentBridge.handler?(.focusSubagents, sessionId, "")
         return .result()
     }
 }
